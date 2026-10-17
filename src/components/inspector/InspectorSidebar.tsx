@@ -10,6 +10,9 @@ import {
   ArrowUpRight,
   CheckCircle2,
   AlertOctagon,
+  ChevronDown,
+  ChevronRight,
+  ExternalLink,
 } from 'lucide-react';
 import type {
   AdapterCredentials,
@@ -19,9 +22,18 @@ import type {
 } from '@/lib/types';
 import { InfoTooltip } from '@/components/ui/InfoTooltip';
 
+function formatSessionSize(mb?: number): string {
+  if (!mb) return '—';
+  if (mb >= 1000) {
+    return `${(mb / 1000).toFixed(2)} GB (${mb.toLocaleString()} MB)`;
+  }
+  return `${mb.toLocaleString()} MB`;
+}
+
 interface InspectorSidebarProps {
   snapshot: DashboardSnapshot;
   selectedNode: NetworkNode;
+  onSelectNode?: (nodeId: string) => void;
   onSaveCredentials: (
     nodeId: string,
     creds: AdapterCredentials
@@ -32,9 +44,13 @@ interface InspectorSidebarProps {
 export function InspectorSidebar({
   snapshot,
   selectedNode,
+  onSelectNode,
   onSaveCredentials,
   onRunAutoFix,
 }: InspectorSidebarProps) {
+  const [expandedStreamId, setExpandedStreamId] = useState<string | null>(
+    'dest-steam'
+  );
   const [protocol, setProtocol] = useState<HardwareProtocol>(
     selectedNode.credentialSummary?.protocol || 'snmp'
   );
@@ -313,36 +329,151 @@ export function InspectorSidebar({
         </div>
 
         <div className="space-y-2">
-          <div className="text-[11px] font-medium uppercase tracking-wider text-slate-400 flex items-center">
-            <span>Top Services Using Your Internet Right Now</span>
-            <InfoTooltip
-              title="Understanding Services & ASNs"
-              explanation="Every big company on the internet (Netflix, Valve/Steam, Cloudflare, Google) owns a block of IP addresses identified by an 'ASN' (Autonomous System Number). Matching traffic against these numbers tells you whether a slowdown is caused by a game update, a 4K movie stream, or a cloud backup."
-              source="Matched by destination IP range / reverse DNS lookup and router flow tables."
-              align="right"
-            />
+          <div className="text-[11px] font-medium uppercase tracking-wider text-slate-400 flex items-center justify-between">
+            <span className="flex items-center">
+              <span>Top Services &amp; Active Streams (Click Any to Expand)</span>
+              <InfoTooltip
+                title="Understanding Services, Streams & ASNs"
+                explanation="Click any stream below to expand its full connection details: which device in your home started it (Source), which server on the internet it's talking to (Destination & ASN), how much data has been downloaded in this session (Size), and which port/protocol it uses."
+                source="Matched from gateway WAN counters (192.168.68.1 UPnP), active LAN flows, and reverse DNS / ASN tables."
+                action="Click 'Inspect Client' inside any expanded stream to jump straight to that device on the map."
+                align="right"
+              />
+            </span>
           </div>
-          {snapshot.destinations.map((dest) => (
-            <div key={dest.id} className="text-xs">
-              <div className="flex justify-between text-slate-200 mb-0.5">
-                <span className="truncate">
-                  {dest.service}{' '}
-                  <span className="text-slate-400 font-mono text-[10px]">
-                    (used by {dest.topClientName})
-                  </span>
-                </span>
-                <span className="font-mono text-sky-300 shrink-0 ml-2">
-                  {dest.downMbps} Mbps ({dest.sharePct}%)
-                </span>
+
+          {snapshot.destinations.map((dest) => {
+            const isExpanded = expandedStreamId === dest.id;
+            return (
+              <div
+                key={dest.id}
+                className={`rounded-lg border transition ${
+                  isExpanded
+                    ? 'bg-slate-950/90 border-sky-500/40 p-2.5'
+                    : 'bg-slate-950/40 border-slate-800/80 hover:border-slate-700 p-2'
+                }`}
+              >
+                <button
+                  type="button"
+                  onClick={() =>
+                    setExpandedStreamId(isExpanded ? null : dest.id)
+                  }
+                  className="w-full text-left text-xs"
+                >
+                  <div className="flex items-center justify-between text-slate-200 mb-1">
+                    <span className="flex items-center gap-1.5 truncate font-medium">
+                      {isExpanded ? (
+                        <ChevronDown className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                      ) : (
+                        <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                      )}
+                      <span className="truncate">{dest.service}</span>
+                      <span className="text-slate-400 font-mono text-[10px] font-normal">
+                        ({dest.topClientName})
+                      </span>
+                    </span>
+                    <span className="font-mono text-sky-300 shrink-0 ml-2">
+                      ↓ {dest.downMbps} Mbps ({dest.sharePct}%)
+                    </span>
+                  </div>
+                  <div className="w-full bg-slate-900 h-1.5 rounded-full overflow-hidden">
+                    <div
+                      className="bg-sky-400 h-full rounded-full transition-all"
+                      style={{ width: `${dest.sharePct}%` }}
+                    />
+                  </div>
+                </button>
+
+                {isExpanded && (
+                  <div className="mt-2.5 pt-2.5 border-t border-slate-800/90 text-[11px] space-y-2 text-slate-300">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="bg-slate-900/90 border border-slate-800 rounded p-2">
+                        <div className="text-[10px] uppercase tracking-wider text-slate-400">
+                          Source (Local Client)
+                        </div>
+                        <div className="font-semibold text-slate-100 truncate">
+                          {dest.topClientName}
+                        </div>
+                        <div className="font-mono text-[10px] text-sky-300">
+                          IP: {dest.sourceClientIp || '192.168.68.x'}
+                        </div>
+                        {dest.sourceClientMac && (
+                          <div className="font-mono text-[10px] text-slate-400">
+                            MAC: {dest.sourceClientMac}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="bg-slate-900/90 border border-slate-800 rounded p-2">
+                        <div className="text-[10px] uppercase tracking-wider text-slate-400">
+                          Destination (Remote Host)
+                        </div>
+                        <div
+                          className="font-semibold text-slate-100 truncate"
+                          title={dest.destinationHost}
+                        >
+                          {dest.destinationHost || dest.service}
+                        </div>
+                        <div className="font-mono text-[10px] text-emerald-300">
+                          IP: {dest.destinationIp || '—'} ({dest.asn})
+                        </div>
+                        <div className="text-[10px] text-slate-400">
+                          Category: {dest.category}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-1.5 bg-slate-900/60 border border-slate-800/80 rounded p-2">
+                      <div>
+                        <div className="text-[10px] text-slate-400">
+                          Session Size
+                        </div>
+                        <div className="font-mono font-semibold text-slate-100">
+                          {formatSessionSize(dest.sessionTransferredMb)}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] text-slate-400">
+                          Live Rate (↓ / ↑)
+                        </div>
+                        <div className="font-mono font-semibold text-sky-300">
+                          {dest.downMbps}M / {dest.upMbps}M
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] text-slate-400">
+                          Flows &amp; Ping
+                        </div>
+                        <div className="font-mono font-semibold text-slate-100">
+                          {dest.activeConnections ?? 1} flows •{' '}
+                          {dest.avgRttMs ?? 12}ms
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-2 pt-0.5">
+                      <div className="text-[10px] text-slate-400 font-mono truncate">
+                        {dest.protocolPort || 'HTTPS / TCP :443'} •{' '}
+                        {dest.dscpClass || 'Best Effort'}
+                      </div>
+                      {dest.clientNodeId && onSelectNode && (
+                        <button
+                          type="button"
+                          onClick={() => onSelectNode(dest.clientNodeId!)}
+                          className="shrink-0 flex items-center gap-1 bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/40 rounded px-2.5 py-1 text-[11px] font-semibold transition"
+                        >
+                          <span>
+                            Inspect Client ({dest.sourceClientIp})
+                          </span>
+                          <ExternalLink className="w-3 h-3" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
-              <div className="w-full bg-slate-950 h-1.5 rounded-full overflow-hidden">
-                <div
-                  className="bg-sky-400 h-full rounded-full"
-                  style={{ width: `${dest.sharePct}%` }}
-                />
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 

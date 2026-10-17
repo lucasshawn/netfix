@@ -75,6 +75,16 @@ export interface TrafficDestination {
   upMbps: number;
   sharePct: number;
   topClientName: string;
+  clientNodeId?: string;
+  sourceClientIp?: string;
+  sourceClientMac?: string;
+  destinationIp?: string;
+  destinationHost?: string;
+  protocolPort?: string;
+  sessionTransferredMb?: number;
+  activeConnections?: number;
+  avgRttMs?: number;
+  dscpClass?: string;
 }
 
 export interface ClientTalker {
@@ -85,6 +95,12 @@ export interface ClientTalker {
   upMbps: number;
   sharePct: number;
   primaryService: string;
+  mac?: string;
+  destinationIp?: string;
+  destinationHost?: string;
+  protocolPort?: string;
+  sessionTransferredMb?: number;
+  activeConnections?: number;
 }
 
 export interface GatewayBottleneckMetrics {

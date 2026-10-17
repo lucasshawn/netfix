@@ -138,6 +138,7 @@ export function NetfixApp({ initialSnapshot }: NetfixAppProps) {
             <InspectorSidebar
               snapshot={snapshot}
               selectedNode={selectedNode}
+              onSelectNode={setSelectedNodeId}
               onSaveCredentials={handleSaveCredentials}
               onRunAutoFix={handleRunAutoFix}
             />
