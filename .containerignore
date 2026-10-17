@@ -1,0 +1,9 @@
+node_modules
+.next
+.git
+.worktrees
+.superpowers
+data
+*.db
+*.db-wal
+*.db-shm

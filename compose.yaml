@@ -1,0 +1,24 @@
+services:
+  netfix:
+    build:
+      context: .
+      dockerfile: Containerfile
+    image: localhost/netfix:latest
+    container_name: netfix-hub
+    restart: unless-stopped
+    ports:
+      - "0.0.0.0:3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+      - NETFIX_DB_PATH=/data/netfix.db
+      - NETFIX_HOSTNAME=Hub
+    volumes:
+      - netfix_data:/data
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+
+volumes:
+  netfix_data:
