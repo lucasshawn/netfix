@@ -115,7 +115,7 @@ async function sampleHostTelemetry() {
   }
 
   try {
-    const psCmd = `powershell -NoProfile -Command "Get-NetTCPConnection -State Established | Where-Object { $_.RemoteAddress -notlike '127.*' -and $_.RemoteAddress -notlike '::1*' -and $_.RemoteAddress -notlike '10.88.*' -and $_.RemoteAddress -notlike '172.*' } | ForEach-Object { $p = (Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue).ProcessName; [PSCustomObject]@{ proc = if ($p) { $p } else { 'system' }; pid = $_.OwningProcess; remoteIp = $_.RemoteAddress; remotePort = $_.RemotePort } } | ConvertTo-Json -Compress"`;
+    const psCmd = `powershell -NoProfile -Command "Get-NetTCPConnection -State Established | Where-Object { $_.RemoteAddress -notlike '127.*' -and $_.RemoteAddress -notlike '::1*' -and $_.RemoteAddress -notlike '10.88.*' -and $_.RemoteAddress -notlike '172.*' } | ForEach-Object { $p = (Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue).ProcessName; [PSCustomObject]@{ proc = if ($p) { $p } else { 'system' }; pid = $_.OwningProcess; localPort = $_.LocalPort; remoteIp = $_.RemoteAddress; remotePort = $_.RemotePort } } | ConvertTo-Json -Compress"`;
     const { stdout: connJson } = await execAsync(psCmd, { timeout: 3000 });
     if (connJson && connJson.trim()) {
       const parsed = JSON.parse(connJson.trim());

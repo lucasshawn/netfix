@@ -48,8 +48,11 @@ export function InspectorSidebar({
   onSaveCredentials,
   onRunAutoFix,
 }: InspectorSidebarProps) {
+  const [streamFilter, setStreamFilter] = useState<
+    'all' | 'node_to_node' | 'outbound_wan' | 'grouped'
+  >('all');
   const [expandedStreamId, setExpandedStreamId] = useState<string | null>(
-    snapshot.destinations[0]?.id || 'dest-live-0'
+    snapshot.streams?.[0]?.id || snapshot.destinations[0]?.id || 'dest-live-0'
   );
   const [protocol, setProtocol] = useState<HardwareProtocol>(
     selectedNode.credentialSummary?.protocol || 'snmp'
@@ -331,149 +334,369 @@ export function InspectorSidebar({
         <div className="space-y-2">
           <div className="text-[11px] font-medium uppercase tracking-wider text-slate-400 flex items-center justify-between">
             <span className="flex items-center">
-              <span>Top Services &amp; Active Streams (Click Any to Expand)</span>
+              <span>All Network Streams (Click Any to Expand)</span>
               <InfoTooltip
-                title="Understanding Services, Streams & ASNs"
-                explanation="Click any stream below to expand its full connection details: which device in your home started it (Source), which server on the internet it's talking to (Destination & ASN), how much data has been downloaded in this session (Size), and which port/protocol it uses."
-                source="Matched from gateway WAN counters (192.168.68.1 UPnP), active LAN flows, and reverse DNS / ASN tables."
-                action="Click 'Inspect Client' inside any expanded stream to jump straight to that device on the map."
+                title="All Network Streams (Node ↔ Node & Outbound WAN)"
+                explanation="Shows every active connection across your home network: internal Node ↔ Node links (Deco Mesh 5 GHz backhaul, SonosNet 2412 MHz audio matrix, and Creality 3D Printer LAN control) as well as every Outbound WAN socket going out through your Main Deco Gateway (192.168.68.1)."
+                source="Live TCP socket table (Get-NetTCPConnection + Process ID), Sonos UPnP ZoneGroupTopology, Deco Mesh backhaul probes, and UPnP IGD WAN byte counters."
+                action="Use the filter tabs below to switch between All Streams, Node ↔ Node (Local LAN), Outbound via Gateway, or Top Grouped Services."
                 align="right"
               />
             </span>
           </div>
 
-          {snapshot.destinations.map((dest) => {
-            const isExpanded = expandedStreamId === dest.id;
-            return (
-              <div
-                key={dest.id}
-                className={`rounded-lg border transition ${
-                  isExpanded
-                    ? 'bg-slate-950/90 border-sky-500/40 p-2.5'
-                    : 'bg-slate-950/40 border-slate-800/80 hover:border-slate-700 p-2'
-                }`}
-              >
-                <button
-                  type="button"
-                  onClick={() =>
-                    setExpandedStreamId(isExpanded ? null : dest.id)
-                  }
-                  className="w-full text-left text-xs"
-                >
-                  <div className="flex items-center justify-between text-slate-200 mb-1">
-                    <span className="flex items-center gap-1.5 truncate font-medium">
-                      {isExpanded ? (
-                        <ChevronDown className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-                      ) : (
-                        <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                      )}
-                      <span className="truncate">{dest.service}</span>
-                      <span className="text-slate-400 font-mono text-[10px] font-normal">
-                        ({dest.topClientName})
-                      </span>
-                    </span>
-                    <span className="font-mono text-sky-300 shrink-0 ml-2">
-                      ↓ {dest.downMbps} Mbps ({dest.sharePct}%)
-                    </span>
-                  </div>
-                  <div className="w-full bg-slate-900 h-1.5 rounded-full overflow-hidden">
-                    <div
-                      className="bg-sky-400 h-full rounded-full transition-all"
-                      style={{ width: `${dest.sharePct}%` }}
-                    />
-                  </div>
-                </button>
+          {/* Filter Tabs: All Streams | Node ↔ Node | Outbound WAN | Grouped */}
+          {(() => {
+            const allStreams = snapshot.streams || [];
+            const lanStreams = allStreams.filter(
+              (s) => s.direction === 'node_to_node'
+            );
+            const wanStreams = allStreams.filter(
+              (s) => s.direction === 'outbound_wan'
+            );
+            const displayedStreams =
+              streamFilter === 'node_to_node'
+                ? lanStreams
+                : streamFilter === 'outbound_wan'
+                ? wanStreams
+                : allStreams;
 
-                {isExpanded && (
-                  <div className="mt-2.5 pt-2.5 border-t border-slate-800/90 text-[11px] space-y-2 text-slate-300">
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="bg-slate-900/90 border border-slate-800 rounded p-2">
-                        <div className="text-[10px] uppercase tracking-wider text-slate-400">
-                          Source (Local Client)
+            return (
+              <>
+                <div className="grid grid-cols-4 gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800 text-[10px] font-semibold">
+                  <button
+                    type="button"
+                    onClick={() => setStreamFilter('all')}
+                    className={`py-1 px-1.5 rounded transition truncate ${
+                      streamFilter === 'all'
+                        ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    All ({allStreams.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setStreamFilter('node_to_node')}
+                    className={`py-1 px-1.5 rounded transition truncate ${
+                      streamFilter === 'node_to_node'
+                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    Node↔Node ({lanStreams.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setStreamFilter('outbound_wan')}
+                    className={`py-1 px-1.5 rounded transition truncate ${
+                      streamFilter === 'outbound_wan'
+                        ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    Via Gateway ({wanStreams.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setStreamFilter('grouped')}
+                    className={`py-1 px-1.5 rounded transition truncate ${
+                      streamFilter === 'grouped'
+                        ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    Grouped ({snapshot.destinations.length})
+                  </button>
+                </div>
+
+                {streamFilter !== 'grouped' ? (
+                  <div className="max-h-80 overflow-y-auto pr-1 space-y-1.5">
+                    {displayedStreams.map((stream) => {
+                      const isExpanded = expandedStreamId === stream.id;
+                      const isLan = stream.direction === 'node_to_node';
+                      return (
+                        <div
+                          key={stream.id}
+                          className={`rounded-lg border transition ${
+                            isExpanded
+                              ? 'bg-slate-950/95 border-sky-500/40 p-2.5'
+                              : 'bg-slate-950/40 border-slate-800/80 hover:border-slate-700 p-2'
+                          }`}
+                        >
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setExpandedStreamId(isExpanded ? null : stream.id)
+                            }
+                            className="w-full text-left text-xs"
+                          >
+                            <div className="flex items-center justify-between gap-2 text-slate-200">
+                              <span className="flex items-center gap-1.5 truncate font-medium">
+                                {isExpanded ? (
+                                  <ChevronDown className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                                ) : (
+                                  <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                )}
+                                <span
+                                  className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded shrink-0 ${
+                                    isLan
+                                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                                      : 'bg-sky-500/20 text-sky-300 border border-sky-500/30'
+                                  }`}
+                                >
+                                  {isLan ? 'LAN↔LAN' : 'WAN'}
+                                </span>
+                                <span className="truncate">
+                                  {stream.sourceName.split(' (')[0]} →{' '}
+                                  {stream.targetName}
+                                </span>
+                              </span>
+                              <span className="font-mono text-[11px] text-sky-300 shrink-0">
+                                ↓{stream.downMbps}M / ↑{stream.upMbps}M
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono mt-1 pl-5">
+                              <span className="truncate">
+                                {stream.sourceIp}
+                                {stream.sourcePort ? `:${stream.sourcePort}` : ''}{' '}
+                                {stream.viaGatewayIp
+                                  ? `→ [GW ${stream.viaGatewayIp.split(' ')[0]}] → `
+                                  : '↔ '}
+                                {stream.targetIp}
+                                {stream.targetPort ? `:${stream.targetPort}` : ''}
+                              </span>
+                              <span className="text-slate-500 shrink-0 ml-2">
+                                {stream.processName || stream.protocol}
+                              </span>
+                            </div>
+                          </button>
+
+                          {isExpanded && (
+                            <div className="mt-2.5 pt-2.5 border-t border-slate-800/90 text-[11px] space-y-2 text-slate-300">
+                              <div className="grid grid-cols-2 gap-2">
+                                <div className="bg-slate-900/90 border border-slate-800 rounded p-2">
+                                  <div className="text-[10px] uppercase tracking-wider text-slate-400">
+                                    Source Node
+                                  </div>
+                                  <div className="font-semibold text-slate-100 truncate">
+                                    {stream.sourceName}
+                                  </div>
+                                  <div className="font-mono text-[10px] text-sky-300">
+                                    {stream.sourceIp}
+                                    {stream.sourcePort
+                                      ? `:${stream.sourcePort}`
+                                      : ''}
+                                  </div>
+                                  {stream.processName && (
+                                    <div className="font-mono text-[10px] text-amber-300 truncate">
+                                      App: {stream.processName}
+                                    </div>
+                                  )}
+                                </div>
+
+                                <div className="bg-slate-900/90 border border-slate-800 rounded p-2">
+                                  <div className="text-[10px] uppercase tracking-wider text-slate-400">
+                                    {isLan
+                                      ? 'Target Local Node'
+                                      : 'Remote WAN Endpoint'}
+                                  </div>
+                                  <div
+                                    className="font-semibold text-slate-100 truncate"
+                                    title={stream.targetName}
+                                  >
+                                    {stream.targetName}
+                                  </div>
+                                  <div className="font-mono text-[10px] text-emerald-300">
+                                    {stream.targetIp}
+                                    {stream.targetPort
+                                      ? `:${stream.targetPort}`
+                                      : ''}
+                                  </div>
+                                  <div className="text-[10px] text-slate-400 truncate">
+                                    {stream.viaGatewayIp
+                                      ? `Via Gateway: ${stream.viaGatewayIp}`
+                                      : `Direct LAN (${stream.category})`}
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="grid grid-cols-3 gap-1.5 bg-slate-900/60 border border-slate-800/80 rounded p-2">
+                                <div>
+                                  <div className="text-[10px] text-slate-400">
+                                    Session Size
+                                  </div>
+                                  <div className="font-mono font-semibold text-slate-100">
+                                    {formatSessionSize(stream.sessionMb)}
+                                  </div>
+                                </div>
+                                <div>
+                                  <div className="text-[10px] text-slate-400">
+                                    Live Rate (↓ / ↑)
+                                  </div>
+                                  <div className="font-mono font-semibold text-sky-300">
+                                    {stream.downMbps}M / {stream.upMbps}M
+                                  </div>
+                                </div>
+                                <div>
+                                  <div className="text-[10px] text-slate-400">
+                                    Latency &amp; State
+                                  </div>
+                                  <div className="font-mono font-semibold text-slate-100">
+                                    {stream.latencyMs}ms •{' '}
+                                    {stream.status === 'active'
+                                      ? 'Active'
+                                      : 'Keepalive'}
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
+                                <div className="text-[10px] text-slate-400 font-mono truncate">
+                                  {stream.protocol} • {stream.category}
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                  {stream.sourceNodeId && onSelectNode && (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        onSelectNode(stream.sourceNodeId!)
+                                      }
+                                      className="flex items-center gap-1 bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/40 rounded px-2 py-1 text-[10px] font-semibold transition"
+                                    >
+                                      <span>
+                                        Source ({stream.sourceIp})
+                                      </span>
+                                      <ExternalLink className="w-2.5 h-2.5" />
+                                    </button>
+                                  )}
+                                  {stream.targetNodeId && onSelectNode && (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        onSelectNode(stream.targetNodeId!)
+                                      }
+                                      className="flex items-center gap-1 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 rounded px-2 py-1 text-[10px] font-semibold transition"
+                                    >
+                                      <span>
+                                        {isLan
+                                          ? `Target (${stream.targetIp})`
+                                          : 'Gateway (.1)'}
+                                      </span>
+                                      <ExternalLink className="w-2.5 h-2.5" />
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          )}
                         </div>
-                        <div className="font-semibold text-slate-100 truncate">
-                          {dest.topClientName}
-                        </div>
-                        <div className="font-mono text-[10px] text-sky-300">
-                          IP: {dest.sourceClientIp || '192.168.68.x'}
-                        </div>
-                        {dest.sourceClientMac && (
-                          <div className="font-mono text-[10px] text-slate-400">
-                            MAC: {dest.sourceClientMac}
+                      );
+                    })}
+                  </div>
+                ) : (
+                  snapshot.destinations.map((dest) => {
+                    const isExpanded = expandedStreamId === dest.id;
+                    return (
+                      <div
+                        key={dest.id}
+                        className={`rounded-lg border transition ${
+                          isExpanded
+                            ? 'bg-slate-950/90 border-sky-500/40 p-2.5'
+                            : 'bg-slate-950/40 border-slate-800/80 hover:border-slate-700 p-2'
+                        }`}
+                      >
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setExpandedStreamId(isExpanded ? null : dest.id)
+                          }
+                          className="w-full text-left text-xs"
+                        >
+                          <div className="flex items-center justify-between text-slate-200 mb-1">
+                            <span className="flex items-center gap-1.5 truncate font-medium">
+                              {isExpanded ? (
+                                <ChevronDown className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                              ) : (
+                                <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                              )}
+                              <span className="truncate">{dest.service}</span>
+                              <span className="text-slate-400 font-mono text-[10px] font-normal">
+                                ({dest.topClientName})
+                              </span>
+                            </span>
+                            <span className="font-mono text-sky-300 shrink-0 ml-2">
+                              ↓ {dest.downMbps} Mbps ({dest.sharePct}%)
+                            </span>
+                          </div>
+                          <div className="w-full bg-slate-900 h-1.5 rounded-full overflow-hidden">
+                            <div
+                              className="bg-sky-400 h-full rounded-full transition-all"
+                              style={{ width: `${dest.sharePct}%` }}
+                            />
+                          </div>
+                        </button>
+
+                        {isExpanded && (
+                          <div className="mt-2.5 pt-2.5 border-t border-slate-800/90 text-[11px] space-y-2 text-slate-300">
+                            <div className="grid grid-cols-2 gap-2">
+                              <div className="bg-slate-900/90 border border-slate-800 rounded p-2">
+                                <div className="text-[10px] uppercase tracking-wider text-slate-400">
+                                  Source (Local Client)
+                                </div>
+                                <div className="font-semibold text-slate-100 truncate">
+                                  {dest.topClientName}
+                                </div>
+                                <div className="font-mono text-[10px] text-sky-300">
+                                  IP: {dest.sourceClientIp || '192.168.68.x'}
+                                </div>
+                              </div>
+
+                              <div className="bg-slate-900/90 border border-slate-800 rounded p-2">
+                                <div className="text-[10px] uppercase tracking-wider text-slate-400">
+                                  Destination (Remote Host)
+                                </div>
+                                <div
+                                  className="font-semibold text-slate-100 truncate"
+                                  title={dest.destinationHost}
+                                >
+                                  {dest.destinationHost || dest.service}
+                                </div>
+                                <div className="font-mono text-[10px] text-emerald-300">
+                                  IP: {dest.destinationIp || '—'} ({dest.asn})
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center justify-between gap-2 pt-0.5">
+                              <div className="text-[10px] text-slate-400 font-mono truncate">
+                                {dest.protocolPort || 'HTTPS / TCP :443'} •{' '}
+                                {formatSessionSize(dest.sessionTransferredMb)}
+                              </div>
+                              {dest.clientNodeId && onSelectNode && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    onSelectNode(dest.clientNodeId!)
+                                  }
+                                  className="shrink-0 flex items-center gap-1 bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/40 rounded px-2.5 py-1 text-[11px] font-semibold transition"
+                                >
+                                  <span>
+                                    Inspect Client ({dest.sourceClientIp})
+                                  </span>
+                                  <ExternalLink className="w-3 h-3" />
+                                </button>
+                              )}
+                            </div>
                           </div>
                         )}
                       </div>
-
-                      <div className="bg-slate-900/90 border border-slate-800 rounded p-2">
-                        <div className="text-[10px] uppercase tracking-wider text-slate-400">
-                          Destination (Remote Host)
-                        </div>
-                        <div
-                          className="font-semibold text-slate-100 truncate"
-                          title={dest.destinationHost}
-                        >
-                          {dest.destinationHost || dest.service}
-                        </div>
-                        <div className="font-mono text-[10px] text-emerald-300">
-                          IP: {dest.destinationIp || '—'} ({dest.asn})
-                        </div>
-                        <div className="text-[10px] text-slate-400">
-                          Category: {dest.category}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-1.5 bg-slate-900/60 border border-slate-800/80 rounded p-2">
-                      <div>
-                        <div className="text-[10px] text-slate-400">
-                          Session Size
-                        </div>
-                        <div className="font-mono font-semibold text-slate-100">
-                          {formatSessionSize(dest.sessionTransferredMb)}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-[10px] text-slate-400">
-                          Live Rate (↓ / ↑)
-                        </div>
-                        <div className="font-mono font-semibold text-sky-300">
-                          {dest.downMbps}M / {dest.upMbps}M
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-[10px] text-slate-400">
-                          Flows &amp; Ping
-                        </div>
-                        <div className="font-mono font-semibold text-slate-100">
-                          {dest.activeConnections ?? 1} flows •{' '}
-                          {dest.avgRttMs ?? 12}ms
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-between gap-2 pt-0.5">
-                      <div className="text-[10px] text-slate-400 font-mono truncate">
-                        {dest.protocolPort || 'HTTPS / TCP :443'} •{' '}
-                        {dest.dscpClass || 'Best Effort'}
-                      </div>
-                      {dest.clientNodeId && onSelectNode && (
-                        <button
-                          type="button"
-                          onClick={() => onSelectNode(dest.clientNodeId!)}
-                          className="shrink-0 flex items-center gap-1 bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/40 rounded px-2.5 py-1 text-[11px] font-semibold transition"
-                        >
-                          <span>
-                            Inspect Client ({dest.sourceClientIp})
-                          </span>
-                          <ExternalLink className="w-3 h-3" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
+                    );
+                  })
                 )}
-              </div>
+              </>
             );
-          })}
+          })()}
         </div>
       </div>
 

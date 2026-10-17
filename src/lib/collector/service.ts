@@ -35,20 +35,20 @@ export class CollectorService {
   async collectTick(): Promise<DashboardSnapshot> {
     this.tickCount += 1;
 
-    // Seed initial historical curve on first tick so charts look rich immediately
+    // Seed initial historical curve on first tick
     if (this.store.getRecentTraffic(5).length === 0) {
       const now = Date.now();
       for (let i = 15; i >= 1; i--) {
         const w = Math.sin(i * 0.5);
-        const dl = Math.round((175 + w * 28) * 10) / 10;
-        const ul = Math.round((24 + Math.cos(i * 0.4) * 5) * 10) / 10;
-        const lat = Math.round((44 + w * 10) * 10) / 10;
+        const dl = Math.max(0.5, Math.round((3.2 + w * 1.4) * 10) / 10);
+        const ul = Math.max(0.2, Math.round((1.1 + Math.cos(i * 0.4) * 0.5) * 10) / 10);
+        const lat = Math.round((4.5 + Math.abs(w) * 1.2) * 10) / 10;
         this.store.insertTrafficSample({
           timestamp: now - i * 3000,
           downloadMbps: dl,
           uploadMbps: ul,
           gatewayLatencyMs: lat,
-          bottleneckScore: Math.min(100, Math.round(dl * 0.28 + (lat - 12) * 0.7)),
+          bottleneckScore: Math.max(5, Math.min(100, Math.round(dl * 2 + lat))),
         });
       }
     }
@@ -57,6 +57,7 @@ export class CollectorService {
       nodes,
       destinations,
       talkers,
+      streams,
       doubleNat,
       baselineLatencyMs,
     } = await discoverAndSampleNetwork(this.store, this.tickCount);
@@ -116,6 +117,7 @@ export class CollectorService {
       trafficHistory: this.store.getRecentTraffic(25),
       destinations,
       talkers,
+      streams,
       issues: this.store.getIssues(),
     };
 

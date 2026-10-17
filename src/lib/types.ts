@@ -133,6 +133,31 @@ export interface NetworkIssue {
   resolved: boolean;
 }
 
+export type StreamDirection = 'outbound_wan' | 'node_to_node';
+
+export interface NetworkStream {
+  id: string;
+  direction: StreamDirection;
+  protocol: string;
+  sourceNodeId?: string;
+  sourceName: string;
+  sourceIp: string;
+  sourcePort?: number;
+  sourceMac?: string;
+  processName?: string;
+  targetNodeId?: string;
+  targetName: string;
+  targetIp: string;
+  targetPort?: number;
+  viaGatewayIp?: string;
+  category: string;
+  downMbps: number;
+  upMbps: number;
+  sessionMb: number;
+  latencyMs: number;
+  status: 'active' | 'idle_keepalive';
+}
+
 export interface DashboardSnapshot {
   timestamp: number;
   hostName: string;
@@ -143,5 +168,6 @@ export interface DashboardSnapshot {
   trafficHistory: TrafficSample[];
   destinations: TrafficDestination[];
   talkers: ClientTalker[];
+  streams: NetworkStream[];
   issues: NetworkIssue[];
 }

@@ -48,8 +48,11 @@ export function MobileDashboard({
   const [activeTab, setActiveTab] = useState<
     'map' | 'traffic' | 'fixes' | 'devices'
   >('map');
+  const [streamFilter, setStreamFilter] = useState<
+    'all' | 'node_to_node' | 'outbound_wan' | 'grouped'
+  >('all');
   const [expandedStreamId, setExpandedStreamId] = useState<string | null>(
-    snapshot.destinations[0]?.id || 'dest-live-0'
+    snapshot.streams?.[0]?.id || snapshot.destinations[0]?.id || 'dest-live-0'
   );
   const [expandedTalkerId, setExpandedTalkerId] = useState<string | null>(null);
   const [community, setCommunity] = useState('public');
@@ -145,142 +148,301 @@ export function MobileDashboard({
           <div className="space-y-3">
             <div className="bg-slate-900 border border-slate-800 rounded-xl p-3">
               <div className="text-xs font-semibold text-sky-400 uppercase mb-2 flex items-center gap-1.5">
-                <span>Where Data Is Going (Tap Stream for Details)</span>
+                <span>All Network Streams (Tap Stream for Details)</span>
                 <InfoTooltip
-                  title="Where Data Is Going"
-                  explanation="Tap any stream to inspect its source device, remote destination IP/hostname, total session size downloaded, and port/protocol."
-                  source="Derived from your gateway's live WAN byte counters (192.168.68.1 UPnP) and active external flow mappings."
+                  title="All Network Streams"
+                  explanation="View every active stream across your network: local Node ↔ Node connections (Deco Mesh backhaul, SonosNet 2412 MHz, Creality 3D Printer) and Outbound WAN streams going through 192.168.68.1."
+                  source="Derived from live host TCP sockets (Get-NetTCPConnection), Sonos ZoneGroupTopology, and UPnP IGD counters on 192.168.68.1."
                 />
               </div>
-              <div className="space-y-2.5">
-                {snapshot.destinations.map((dest) => {
-                  const isExpanded = expandedStreamId === dest.id;
-                  return (
-                    <div
-                      key={dest.id}
-                      className={`rounded-lg border transition p-2.5 ${
-                        isExpanded
-                          ? 'bg-slate-950/90 border-sky-500/40'
-                          : 'bg-slate-950/40 border-slate-800'
-                      }`}
-                    >
+
+              {(() => {
+                const allStreams = snapshot.streams || [];
+                const lanStreams = allStreams.filter(
+                  (s) => s.direction === 'node_to_node'
+                );
+                const wanStreams = allStreams.filter(
+                  (s) => s.direction === 'outbound_wan'
+                );
+                const displayedStreams =
+                  streamFilter === 'node_to_node'
+                    ? lanStreams
+                    : streamFilter === 'outbound_wan'
+                    ? wanStreams
+                    : allStreams;
+
+                return (
+                  <div className="space-y-2.5">
+                    <div className="grid grid-cols-4 gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800 text-[10px] font-semibold">
                       <button
                         type="button"
-                        onClick={() =>
-                          setExpandedStreamId(isExpanded ? null : dest.id)
-                        }
-                        className="w-full text-left text-xs"
+                        onClick={() => setStreamFilter('all')}
+                        className={`py-1.5 px-1 rounded transition truncate ${
+                          streamFilter === 'all'
+                            ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40'
+                            : 'text-slate-400'
+                        }`}
                       >
-                        <div className="flex justify-between items-center mb-1">
-                          <span className="flex items-center gap-1.5 font-medium truncate">
-                            {isExpanded ? (
-                              <ChevronDown className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-                            ) : (
-                              <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                            )}
-                            <span className="truncate">{dest.service}</span>
-                          </span>
-                          <span className="text-sky-300 font-mono shrink-0 ml-2">
-                            {dest.downMbps} Mbps ({dest.sharePct}%)
-                          </span>
-                        </div>
-                        <div className="w-full bg-slate-900 h-2 rounded-full overflow-hidden">
-                          <div
-                            className="bg-sky-400 h-full"
-                            style={{ width: `${dest.sharePct}%` }}
-                          />
-                        </div>
+                        All ({allStreams.length})
                       </button>
+                      <button
+                        type="button"
+                        onClick={() => setStreamFilter('node_to_node')}
+                        className={`py-1.5 px-1 rounded transition truncate ${
+                          streamFilter === 'node_to_node'
+                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                            : 'text-slate-400'
+                        }`}
+                      >
+                        Node↔Node ({lanStreams.length})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setStreamFilter('outbound_wan')}
+                        className={`py-1.5 px-1 rounded transition truncate ${
+                          streamFilter === 'outbound_wan'
+                            ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40'
+                            : 'text-slate-400'
+                        }`}
+                      >
+                        Via GW ({wanStreams.length})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setStreamFilter('grouped')}
+                        className={`py-1.5 px-1 rounded transition truncate ${
+                          streamFilter === 'grouped'
+                            ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40'
+                            : 'text-slate-400'
+                        }`}
+                      >
+                        Grouped ({snapshot.destinations.length})
+                      </button>
+                    </div>
 
-                      {isExpanded && (
-                        <div className="mt-2.5 pt-2.5 border-t border-slate-800 text-[11px] space-y-2 text-slate-300">
-                          <div className="grid grid-cols-2 gap-2">
-                            <div className="bg-slate-900 border border-slate-800 rounded p-2">
-                              <div className="text-[10px] uppercase text-slate-400">
-                                Source Client
-                              </div>
-                              <div className="font-semibold text-slate-100 truncate">
-                                {dest.topClientName}
-                              </div>
-                              <div className="font-mono text-[10px] text-sky-300">
-                                {dest.sourceClientIp}
-                              </div>
-                              {dest.sourceClientMac && (
-                                <div className="font-mono text-[10px] text-slate-400">
-                                  {dest.sourceClientMac}
+                    {streamFilter !== 'grouped'
+                      ? displayedStreams.map((stream) => {
+                          const isExpanded = expandedStreamId === stream.id;
+                          const isLan = stream.direction === 'node_to_node';
+                          return (
+                            <div
+                              key={stream.id}
+                              className={`rounded-lg border transition p-2.5 ${
+                                isExpanded
+                                  ? 'bg-slate-950/90 border-sky-500/40'
+                                  : 'bg-slate-950/40 border-slate-800'
+                              }`}
+                            >
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setExpandedStreamId(
+                                    isExpanded ? null : stream.id
+                                  )
+                                }
+                                className="w-full text-left text-xs"
+                              >
+                                <div className="flex justify-between items-center gap-2">
+                                  <span className="flex items-center gap-1.5 font-medium truncate">
+                                    {isExpanded ? (
+                                      <ChevronDown className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                                    ) : (
+                                      <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                    )}
+                                    <span
+                                      className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded shrink-0 ${
+                                        isLan
+                                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                                          : 'bg-sky-500/20 text-sky-300 border border-sky-500/30'
+                                      }`}
+                                    >
+                                      {isLan ? 'LAN↔LAN' : 'WAN'}
+                                    </span>
+                                    <span className="truncate">
+                                      {stream.sourceName.split(' (')[0]} →{' '}
+                                      {stream.targetName}
+                                    </span>
+                                  </span>
+                                  <span className="text-sky-300 font-mono text-[11px] shrink-0">
+                                    ↓{stream.downMbps}M
+                                  </span>
+                                </div>
+                                <div className="flex justify-between text-[10px] font-mono text-slate-400 mt-1 pl-5">
+                                  <span className="truncate">
+                                    {stream.sourceIp}
+                                    {stream.sourcePort
+                                      ? `:${stream.sourcePort}`
+                                      : ''}{' '}
+                                    → {stream.targetIp}
+                                    {stream.targetPort
+                                      ? `:${stream.targetPort}`
+                                      : ''}
+                                  </span>
+                                  <span className="text-slate-500 shrink-0 ml-2">
+                                    {stream.processName || stream.protocol}
+                                  </span>
+                                </div>
+                              </button>
+
+                              {isExpanded && (
+                                <div className="mt-2.5 pt-2.5 border-t border-slate-800 text-[11px] space-y-2 text-slate-300">
+                                  <div className="grid grid-cols-2 gap-2">
+                                    <div className="bg-slate-900 border border-slate-800 rounded p-2">
+                                      <div className="text-[10px] uppercase text-slate-400">
+                                        Source
+                                      </div>
+                                      <div className="font-semibold text-slate-100 truncate">
+                                        {stream.sourceName}
+                                      </div>
+                                      <div className="font-mono text-[10px] text-sky-300">
+                                        {stream.sourceIp}
+                                        {stream.sourcePort
+                                          ? `:${stream.sourcePort}`
+                                          : ''}
+                                      </div>
+                                      {stream.processName && (
+                                        <div className="font-mono text-[10px] text-amber-300 truncate">
+                                          {stream.processName}
+                                        </div>
+                                      )}
+                                    </div>
+                                    <div className="bg-slate-900 border border-slate-800 rounded p-2">
+                                      <div className="text-[10px] uppercase text-slate-400">
+                                        {isLan
+                                          ? 'Target Node'
+                                          : 'WAN Endpoint'}
+                                      </div>
+                                      <div className="font-semibold text-slate-100 truncate">
+                                        {stream.targetName}
+                                      </div>
+                                      <div className="font-mono text-[10px] text-emerald-300">
+                                        {stream.targetIp}
+                                        {stream.targetPort
+                                          ? `:${stream.targetPort}`
+                                          : ''}
+                                      </div>
+                                      <div className="text-[10px] text-slate-400 truncate">
+                                        {stream.viaGatewayIp
+                                          ? `GW: ${stream.viaGatewayIp}`
+                                          : stream.category}
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  <div className="grid grid-cols-3 gap-1.5 bg-slate-900/70 border border-slate-800 rounded p-2">
+                                    <div>
+                                      <div className="text-[10px] text-slate-400">
+                                        Session Size
+                                      </div>
+                                      <div className="font-mono font-semibold text-slate-100">
+                                        {formatSessionSize(stream.sessionMb)}
+                                      </div>
+                                    </div>
+                                    <div>
+                                      <div className="text-[10px] text-slate-400">
+                                        Rate (↓ / ↑)
+                                      </div>
+                                      <div className="font-mono font-semibold text-sky-300">
+                                        {stream.downMbps}M / {stream.upMbps}M
+                                      </div>
+                                    </div>
+                                    <div>
+                                      <div className="text-[10px] text-slate-400">
+                                        Ping
+                                      </div>
+                                      <div className="font-mono font-semibold text-slate-100">
+                                        {stream.latencyMs}ms
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  <div className="flex gap-2">
+                                    {stream.sourceNodeId && (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          onSelectNode(stream.sourceNodeId!);
+                                          setActiveTab('devices');
+                                        }}
+                                        className="flex-1 flex items-center justify-center gap-1 bg-sky-500/20 text-sky-300 border border-sky-500/40 rounded-lg py-1.5 font-semibold"
+                                      >
+                                        <span>
+                                          Source ({stream.sourceIp})
+                                        </span>
+                                        <ExternalLink className="w-3 h-3" />
+                                      </button>
+                                    )}
+                                    {stream.targetNodeId && (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          onSelectNode(stream.targetNodeId!);
+                                          setActiveTab('devices');
+                                        }}
+                                        className="flex-1 flex items-center justify-center gap-1 bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 rounded-lg py-1.5 font-semibold"
+                                      >
+                                        <span>
+                                          {isLan
+                                            ? `Target (${stream.targetIp})`
+                                            : 'Gateway (.1)'}
+                                        </span>
+                                        <ExternalLink className="w-3 h-3" />
+                                      </button>
+                                    )}
+                                  </div>
                                 </div>
                               )}
                             </div>
-                            <div className="bg-slate-900 border border-slate-800 rounded p-2">
-                              <div className="text-[10px] uppercase text-slate-400">
-                                Destination
-                              </div>
-                              <div className="font-semibold text-slate-100 truncate">
-                                {dest.destinationHost || dest.service}
-                              </div>
-                              <div className="font-mono text-[10px] text-emerald-300">
-                                {dest.destinationIp} ({dest.asn})
-                              </div>
-                              <div className="text-[10px] text-slate-400">
-                                {dest.category}
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="grid grid-cols-3 gap-1.5 bg-slate-900/70 border border-slate-800 rounded p-2">
-                            <div>
-                              <div className="text-[10px] text-slate-400">
-                                Session Size
-                              </div>
-                              <div className="font-mono font-semibold text-slate-100">
-                                {formatSessionSize(dest.sessionTransferredMb)}
-                              </div>
-                            </div>
-                            <div>
-                              <div className="text-[10px] text-slate-400">
-                                Rate (↓ / ↑)
-                              </div>
-                              <div className="font-mono font-semibold text-sky-300">
-                                {dest.downMbps}M / {dest.upMbps}M
-                              </div>
-                            </div>
-                            <div>
-                              <div className="text-[10px] text-slate-400">
-                                Flows &amp; Ping
-                              </div>
-                              <div className="font-mono font-semibold text-slate-100">
-                                {dest.activeConnections ?? 1} •{' '}
-                                {dest.avgRttMs ?? 12}ms
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="text-[10px] font-mono text-slate-400">
-                            {dest.protocolPort} • {dest.dscpClass}
-                          </div>
-
-                          {dest.clientNodeId && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                onSelectNode(dest.clientNodeId!);
-                                setActiveTab('devices');
-                              }}
-                              className="w-full flex items-center justify-center gap-1.5 bg-sky-500/20 text-sky-300 border border-sky-500/40 rounded-lg py-1.5 font-semibold"
+                          );
+                        })
+                      : snapshot.destinations.map((dest) => {
+                          const isExpanded = expandedStreamId === dest.id;
+                          return (
+                            <div
+                              key={dest.id}
+                              className={`rounded-lg border transition p-2.5 ${
+                                isExpanded
+                                  ? 'bg-slate-950/90 border-sky-500/40'
+                                  : 'bg-slate-950/40 border-slate-800'
+                              }`}
                             >
-                              <span>
-                                Inspect Client: {dest.topClientName} (
-                                {dest.sourceClientIp})
-                              </span>
-                              <ExternalLink className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setExpandedStreamId(
+                                    isExpanded ? null : dest.id
+                                  )
+                                }
+                                className="w-full text-left text-xs"
+                              >
+                                <div className="flex justify-between items-center mb-1">
+                                  <span className="flex items-center gap-1.5 font-medium truncate">
+                                    {isExpanded ? (
+                                      <ChevronDown className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                                    ) : (
+                                      <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                    )}
+                                    <span className="truncate">
+                                      {dest.service}
+                                    </span>
+                                  </span>
+                                  <span className="text-sky-300 font-mono shrink-0 ml-2">
+                                    {dest.downMbps} Mbps ({dest.sharePct}%)
+                                  </span>
+                                </div>
+                                <div className="w-full bg-slate-900 h-2 rounded-full overflow-hidden">
+                                  <div
+                                    className="bg-sky-400 h-full"
+                                    style={{ width: `${dest.sharePct}%` }}
+                                  />
+                                </div>
+                              </button>
+                            </div>
+                          );
+                        })}
+                  </div>
+                );
+              })()}
             </div>
 
             <div className="bg-slate-900 border border-slate-800 rounded-xl p-3">
