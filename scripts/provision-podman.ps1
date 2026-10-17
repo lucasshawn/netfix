@@ -68,7 +68,7 @@ $prevErrorAction = $ErrorActionPreference
 $ErrorActionPreference = "SilentlyContinue"
 Remove-NetFirewallRule -DisplayName "Netfix LAN HTTP (80, 3000)" | Out-Null
 Remove-NetFirewallRule -DisplayName "Netfix LAN mDNS (UDP 5353)" | Out-Null
-New-NetFirewallRule -DisplayName "Netfix LAN HTTP (80, 3000)" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 80, $Port -Profile Any | Out-Null
+New-NetFirewallRule -DisplayName "Netfix LAN HTTP (80, 3000)" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 80, $Port, 3001 -Profile Any | Out-Null
 New-NetFirewallRule -DisplayName "Netfix LAN mDNS (UDP 5353)" -Direction Inbound -Action Allow -Protocol UDP -LocalPort 5353, 5355, 137 -Profile Any | Out-Null
 
 # Add netfix.local / netfix to Windows hosts file if running as Administrator

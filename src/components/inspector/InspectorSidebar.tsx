@@ -49,7 +49,7 @@ export function InspectorSidebar({
   onRunAutoFix,
 }: InspectorSidebarProps) {
   const [expandedStreamId, setExpandedStreamId] = useState<string | null>(
-    'dest-steam'
+    snapshot.destinations[0]?.id || 'dest-live-0'
   );
   const [protocol, setProtocol] = useState<HardwareProtocol>(
     selectedNode.credentialSummary?.protocol || 'snmp'

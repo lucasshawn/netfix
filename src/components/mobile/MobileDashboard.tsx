@@ -49,7 +49,7 @@ export function MobileDashboard({
     'map' | 'traffic' | 'fixes' | 'devices'
   >('map');
   const [expandedStreamId, setExpandedStreamId] = useState<string | null>(
-    'dest-steam'
+    snapshot.destinations[0]?.id || 'dest-live-0'
   );
   const [expandedTalkerId, setExpandedTalkerId] = useState<string | null>(null);
   const [community, setCommunity] = useState('public');
