@@ -49,10 +49,10 @@ export function MobileDashboard({
     'map' | 'traffic' | 'fixes' | 'devices'
   >('map');
   const [streamFilter, setStreamFilter] = useState<
-    'all' | 'node_to_node' | 'outbound_wan' | 'grouped'
-  >('all');
+    'top_streams' | 'all' | 'node_to_node' | 'outbound_wan'
+  >('top_streams');
   const [expandedStreamId, setExpandedStreamId] = useState<string | null>(
-    snapshot.streams?.[0]?.id || snapshot.destinations[0]?.id || 'dest-live-0'
+    snapshot.destinations[0]?.id || snapshot.streams?.[0]?.id || 'dest-live-0'
   );
   const [expandedTalkerId, setExpandedTalkerId] = useState<string | null>(null);
   const [community, setCommunity] = useState('');
@@ -295,6 +295,17 @@ export function MobileDashboard({
                     <div className="grid grid-cols-4 gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800 text-[10px] font-semibold">
                       <button
                         type="button"
+                        onClick={() => setStreamFilter('top_streams')}
+                        className={`py-1.5 px-1 rounded transition truncate ${
+                          streamFilter === 'top_streams'
+                            ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40'
+                            : 'text-slate-400'
+                        }`}
+                      >
+                        Top Streams ({snapshot.destinations.length})
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => setStreamFilter('all')}
                         className={`py-1.5 px-1 rounded transition truncate ${
                           streamFilter === 'all'
@@ -326,20 +337,9 @@ export function MobileDashboard({
                       >
                         Via GW ({wanStreams.length})
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => setStreamFilter('grouped')}
-                        className={`py-1.5 px-1 rounded transition truncate ${
-                          streamFilter === 'grouped'
-                            ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40'
-                            : 'text-slate-400'
-                        }`}
-                      >
-                        Grouped ({snapshot.destinations.length})
-                      </button>
                     </div>
 
-                    {streamFilter !== 'grouped'
+                    {streamFilter !== 'top_streams'
                       ? displayedStreams.map((stream) => {
                           const isExpanded = expandedStreamId === stream.id;
                           const isLan = stream.direction === 'node_to_node';

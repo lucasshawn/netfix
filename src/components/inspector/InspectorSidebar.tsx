@@ -49,10 +49,10 @@ export function InspectorSidebar({
   onRunAutoFix,
 }: InspectorSidebarProps) {
   const [streamFilter, setStreamFilter] = useState<
-    'all' | 'node_to_node' | 'outbound_wan' | 'grouped'
-  >('all');
+    'top_streams' | 'all' | 'node_to_node' | 'outbound_wan'
+  >('top_streams');
   const [expandedStreamId, setExpandedStreamId] = useState<string | null>(
-    snapshot.streams?.[0]?.id || snapshot.destinations[0]?.id || 'dest-live-0'
+    snapshot.destinations[0]?.id || snapshot.streams?.[0]?.id || 'dest-live-0'
   );
   const [protocol, setProtocol] = useState<HardwareProtocol>(
     selectedNode.credentialSummary?.protocol || 'snmp'
@@ -352,7 +352,7 @@ export function InspectorSidebar({
             </span>
           </div>
 
-          {/* Filter Tabs: All Streams | Node ↔ Node | Outbound WAN | Grouped */}
+          {/* Filter Tabs: Top Streams | All | Node ↔ Node | Via Gateway */}
           {(() => {
             const allStreams = snapshot.streams || [];
             const lanStreams = allStreams.filter(
@@ -371,6 +371,17 @@ export function InspectorSidebar({
             return (
               <>
                 <div className="grid grid-cols-4 gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800 text-[10px] font-semibold">
+                  <button
+                    type="button"
+                    onClick={() => setStreamFilter('top_streams')}
+                    className={`py-1 px-1.5 rounded transition truncate ${
+                      streamFilter === 'top_streams'
+                        ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    Top Streams ({snapshot.destinations.length})
+                  </button>
                   <button
                     type="button"
                     onClick={() => setStreamFilter('all')}
@@ -404,20 +415,9 @@ export function InspectorSidebar({
                   >
                     Via Gateway ({wanStreams.length})
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => setStreamFilter('grouped')}
-                    className={`py-1 px-1.5 rounded transition truncate ${
-                      streamFilter === 'grouped'
-                        ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40'
-                        : 'text-slate-400 hover:text-slate-200'
-                    }`}
-                  >
-                    Grouped ({snapshot.destinations.length})
-                  </button>
                 </div>
 
-                {streamFilter !== 'grouped' ? (
+                {streamFilter !== 'top_streams' ? (
                   <div className="max-h-80 overflow-y-auto pr-1 space-y-1.5">
                     {displayedStreams.map((stream) => {
                       const isExpanded = expandedStreamId === stream.id;
