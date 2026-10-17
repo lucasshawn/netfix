@@ -1,0 +1,22 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+.next/
+dist/
+build/
+
+# Local runtime & database
+data/
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+
+# Brainstorming visual companion session files
+.superpowers/
