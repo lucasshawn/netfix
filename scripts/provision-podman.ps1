@@ -63,7 +63,25 @@ podman run -d `
     localhost/netfix:latest
 if ($LASTEXITCODE -ne 0) { throw "Failed to start netfix-hub container" }
 
-# Start user-space LAN TCP forwarder so LAN interfaces (e.g. 192.168.68.73:3000) reach Podman 127.0.0.1:3000
+# Configure Windows Firewall rules for LAN Phone & PC access (HTTP 80/3000 + mDNS UDP 5353)
+$prevErrorAction = $ErrorActionPreference
+$ErrorActionPreference = "SilentlyContinue"
+Remove-NetFirewallRule -DisplayName "Netfix LAN HTTP (80, 3000)" | Out-Null
+Remove-NetFirewallRule -DisplayName "Netfix LAN mDNS (UDP 5353)" | Out-Null
+New-NetFirewallRule -DisplayName "Netfix LAN HTTP (80, 3000)" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 80, $Port -Profile Any | Out-Null
+New-NetFirewallRule -DisplayName "Netfix LAN mDNS (UDP 5353)" -Direction Inbound -Action Allow -Protocol UDP -LocalPort 5353, 5355, 137 -Profile Any | Out-Null
+
+# Add netfix.local / netfix to Windows hosts file if running as Administrator
+$hostsFile = "$env:SystemRoot\System32\drivers\etc\hosts"
+if (Test-Path $hostsFile) {
+    $hostsContent = Get-Content $hostsFile -Raw
+    if ($hostsContent -notmatch "netfix\.local") {
+        Add-Content -Path $hostsFile -Value "`r`n127.0.0.1 netfix.local netfix"
+    }
+}
+$ErrorActionPreference = $prevErrorAction
+
+# Start user-space LAN TCP forwarder (ports 80 & 3000) + mDNS responder (netfix.local / hub.local)
 Get-CimInstance Win32_Process | Where-Object { $_.Name -eq "node.exe" -and $_.CommandLine -like "*lan-proxy.mjs*" } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 $bindList = ($lanIps -join ",")
 $proxyScript = Join-Path $PSScriptRoot "lan-proxy.mjs"
@@ -74,9 +92,10 @@ $null = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments 
 }
 
 Write-Host "`n[OK] Netfix is live in Podman on Hub!" -ForegroundColor Green
-Write-Host "   - Local PC URL:   http://localhost:$Port"
-Write-Host "   - Hostname URL:   http://$($env:COMPUTERNAME.ToLower()):$Port"
+Write-Host "   - Named LAN URL (Phone & PC): http://netfix.local  (or http://netfix.local:$Port)"
+Write-Host "   - Host mDNS URL (Phone & PC): http://$($env:COMPUTERNAME.ToLower()).local  (or http://$($env:COMPUTERNAME.ToLower()).local:$Port)"
 foreach ($ip in $lanIps) {
-    Write-Host "   - Phone LAN URL:  http://${ip}:$Port"
+    Write-Host "   - Direct LAN IP URL:          http://${ip}:$Port"
 }
-Write-Host "   - Gateway Auto-Discovery: Active via Traceroute + UPnP IGD (192.168.68.1 Main Deco Unit)"
+Write-Host "   - Gateway Auto-Discovery:     Active via Traceroute + UPnP IGD (192.168.68.1 Main Deco Unit)"
+

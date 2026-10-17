@@ -96,9 +96,13 @@ export function NetfixApp({ initialSnapshot }: NetfixAppProps) {
           <div className="flex items-center gap-3 text-xs">
             <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-lg text-slate-300">
               <Smartphone className="w-3.5 h-3.5 text-sky-400" />
-              <span>Phone &amp; PC Access:</span>
+              <span>Phone &amp; PC LAN Name:</span>
               <code className="text-sky-300 font-mono">
-                http://{snapshot.hostName.toLowerCase()}:3000
+                http://netfix.local
+              </code>
+              <span className="text-slate-500">or</span>
+              <code className="text-sky-300 font-mono">
+                http://{snapshot.hostName.toLowerCase()}.local
               </code>
             </div>
             <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-lg text-slate-300">
