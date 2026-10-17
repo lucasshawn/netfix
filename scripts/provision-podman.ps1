@@ -111,11 +111,24 @@ $null = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments 
 }
 Start-Sleep -Seconds 2
 
+# Register automatic startup on PC reboot / logon (Scheduled Task + Registry Run)
+$startScript = Join-Path $PSScriptRoot "start-netfix.ps1"
+$prevErrorAction = $ErrorActionPreference
+$ErrorActionPreference = "SilentlyContinue"
+$taskAction = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-WindowStyle Hidden -NoProfile -ExecutionPolicy Bypass -File `"$startScript`""
+$triggerLogon = New-ScheduledTaskTrigger -AtLogOn
+$triggerBoot = New-ScheduledTaskTrigger -AtStartup
+$taskSettings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Hours 0)
+Register-ScheduledTask -TaskName "Netfix-AutoStart" -Action $taskAction -Trigger @($triggerLogon, $triggerBoot) -Settings $taskSettings -RunLevel Highest -Force | Out-Null
+Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "NetfixAutoStart" -Value "powershell.exe -WindowStyle Hidden -NoProfile -ExecutionPolicy Bypass -File `"$startScript`"" -Force | Out-Null
+$ErrorActionPreference = $prevErrorAction
+
 Write-Host "`n[OK] Netfix is live in Podman on Hub!" -ForegroundColor Green
 Write-Host "   - Named LAN URL (Phone & PC): http://netfix.local  (or http://netfix.local:$Port)"
 Write-Host "   - Host mDNS URL (Phone & PC): http://$($env:COMPUTERNAME.ToLower()).local  (or http://$($env:COMPUTERNAME.ToLower()).local:$Port)"
 foreach ($ip in $lanIps) {
     Write-Host "   - Direct LAN IP URL:          http://${ip}:$Port"
 }
+Write-Host "   - Auto-Start on PC Reboot:    Enabled (Scheduled Task 'Netfix-AutoStart' + User Startup Run Key)"
 Write-Host "   - Gateway Auto-Discovery:     Active via Traceroute + UPnP IGD (192.168.68.1 Main Deco Unit)"
 
