@@ -74,19 +74,30 @@ export function NetfixApp({ initialSnapshot }: NetfixAppProps) {
       {/* Desktop View (>= 1024px): Option B Two-Column Map Canvas + Persistent Inspector */}
       <div className="hidden lg:flex flex-col min-h-screen max-w-[1600px] mx-auto px-6 py-4">
         <header className="flex items-center justify-between border-b border-slate-800 pb-4 mb-5">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-sky-500/20 border border-sky-400/40 flex items-center justify-center text-sky-400">
+          <div className="flex items-center gap-3.5">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-sky-500/30 to-emerald-500/20 border border-sky-400/50 flex items-center justify-center text-sky-300 shadow-[0_0_20px_rgba(56,189,248,0.18)]">
               <Wifi className="w-5 h-5" />
             </div>
             <div>
-              <h1 className="text-lg font-bold tracking-tight text-white flex items-center gap-2">
-                NETFIX{' '}
-                <span className="text-xs font-normal text-slate-400">
-                  // Local Network Diagnostics &amp; Auto-Remediation
-                </span>
-              </h1>
-              <p className="text-xs text-slate-400">
-                Hosted on <strong className="text-slate-200">{snapshot.hostName}</strong> •
+              <div className="flex items-center gap-2.5">
+                <a
+                  href="https://powerhousepnw.com"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[11px] font-bold uppercase tracking-widest px-2.5 py-0.5 rounded-full bg-gradient-to-r from-sky-500/25 to-emerald-500/25 text-sky-300 border border-sky-400/40 hover:border-sky-300 transition"
+                >
+                  powerhousepnw.com
+                </a>
+                <h1 className="text-lg font-bold tracking-tight text-white flex items-center gap-2">
+                  <span>NETFIX</span>
+                  <span className="text-xs font-normal text-slate-400">
+                    // Powerhouse PNW Network Diagnostics &amp; Auto-Remediation
+                  </span>
+                </h1>
+              </div>
+              <p className="text-xs text-slate-400 mt-1">
+                <strong className="text-emerald-400">Powerhouse PNW</strong> • Hosted on{' '}
+                <strong className="text-slate-200">{snapshot.hostName}</strong> •
                 Podman LAN Endpoint:{' '}
                 <span className="font-mono text-sky-400">{snapshot.lanUrl}</span>
               </p>
@@ -148,6 +159,24 @@ export function NetfixApp({ initialSnapshot }: NetfixAppProps) {
             />
           </div>
         </main>
+
+        <footer className="mt-6 pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
+          <div className="flex items-center gap-2">
+            <a
+              href="https://powerhousepnw.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-semibold text-sky-400 hover:text-sky-300 transition"
+            >
+              powerhousepnw.com
+            </a>
+            <span>•</span>
+            <span>Powerhouse PNW Local Network Command Center</span>
+          </div>
+          <div className="font-mono text-[11px] text-slate-500">
+            100% Local Telemetry &amp; AES-256-GCM Vault on {snapshot.hostName}
+          </div>
+        </footer>
       </div>
 
       {/* Mobile Phone View (< 1024px) */}

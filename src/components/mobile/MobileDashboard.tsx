@@ -63,30 +63,50 @@ export function MobileDashboard({
   return (
     <div className="lg:hidden flex flex-col min-h-screen pb-20 bg-slate-950 text-slate-100">
       {/* Sticky Mobile Gateway Bottleneck Header */}
-      <div className="sticky top-0 z-20 bg-slate-900/95 backdrop-blur border-b border-slate-800 px-4 py-3 flex items-center justify-between">
-        <div>
-          <div className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
-            <AlertTriangle className="w-3.5 h-3.5" />
-            <span>Gateway Stress: {snapshot.gateway.score}%</span>
-            <InfoTooltip
-              title="Gateway Bottleneck & Stress Score"
-              explanation="Every device in your home funnels through your main Gateway/Router to reach the internet. This 0–100% score measures how overloaded that choke point is right now."
-              source="Calculated live from WAN bandwidth counters on 192.168.68.1 (UPnP TotalBytesReceived/Sent) and ICMP ping response times (Bufferbloat)."
-              action="Tap 'Fixes' on the right to see recommendations or turn on Smart Traffic Prioritization (QoS)."
-            />
+      <div className="sticky top-0 z-20 bg-slate-900/95 backdrop-blur border-b border-slate-800 px-4 py-2.5 space-y-1.5">
+        <div className="flex items-center justify-between border-b border-slate-800/80 pb-1.5">
+          <div className="flex items-center gap-2">
+            <a
+              href="https://powerhousepnw.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-gradient-to-r from-sky-500/25 to-emerald-500/25 text-sky-300 border border-sky-400/40"
+            >
+              powerhousepnw.com
+            </a>
+            <span className="text-xs font-bold tracking-tight text-white">
+              NETFIX
+            </span>
           </div>
-          <div className="text-[11px] text-slate-400">
-            ↓ {snapshot.gateway.wanDownMbps} Mbps • Bufferbloat +
-            {snapshot.gateway.bufferbloatDeltaMs}ms
-          </div>
+          <span className="text-[10px] font-mono text-slate-400">
+            http://netfix.local
+          </span>
         </div>
-        <button
-          type="button"
-          onClick={() => setActiveTab('fixes')}
-          className="bg-amber-500/20 text-amber-300 border border-amber-500/40 rounded-lg px-3 py-1.5 text-xs font-semibold"
-        >
-          {activeIssues.length} Fixes
-        </button>
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
+              <AlertTriangle className="w-3.5 h-3.5" />
+              <span>Gateway Stress: {snapshot.gateway.score}%</span>
+              <InfoTooltip
+                title="Gateway Bottleneck & Stress Score"
+                explanation="Every device in your home funnels through your main Gateway/Router to reach the internet. This 0–100% score measures how overloaded that choke point is right now."
+                source="Calculated live from WAN bandwidth counters on 192.168.68.1 (UPnP TotalBytesReceived/Sent) and ICMP ping response times (Bufferbloat)."
+                action="Tap 'Fixes' on the right to see recommendations or turn on Smart Traffic Prioritization (QoS)."
+              />
+            </div>
+            <div className="text-[11px] text-slate-400">
+              ↓ {snapshot.gateway.wanDownMbps} Mbps • Bufferbloat +
+              {snapshot.gateway.bufferbloatDeltaMs}ms
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setActiveTab('fixes')}
+            className="bg-amber-500/20 text-amber-300 border border-amber-500/40 rounded-lg px-3 py-1.5 text-xs font-semibold"
+          >
+            {activeIssues.length} Fixes
+          </button>
+        </div>
       </div>
 
       {/* Tab Body */}

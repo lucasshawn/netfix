@@ -2,9 +2,9 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Netfix // Residential Network Diagnostics & Topology',
+  title: 'Powerhouse PNW • Netfix // Network Diagnostics & Topology (powerhousepnw.com)',
   description:
-    'In-network residential diagnostics, gateway bottleneck telemetry, and ISP -> Gateway -> Router -> Clients map.',
+    'Powerhouse PNW (powerhousepnw.com) in-network residential diagnostics, gateway bottleneck telemetry, and live network hierarchy tree.',
 };
 
 export default function RootLayout({
