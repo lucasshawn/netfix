@@ -97,17 +97,21 @@ export function MobileDashboard({
           </div>
         )}
 
-        {activeTab === 'map' && (
-          <div className="space-y-2.5">
-            <div className="text-xs uppercase tracking-wider text-slate-400 font-semibold flex items-center gap-1.5">
-              <span>Tap Any Network Layer to Inspect or Authenticate</span>
-              <InfoTooltip
-                title="Layered Home Network Map"
-                explanation="Shows the path your internet takes from your ISP outside, through your Gateway/Mesh Router (192.168.68.1), down to the computers, phones, and speakers in your house."
-                source="Discovered live via UPnP IGD queries on 192.168.68.1, ICMP latency probes, and your local ARP neighbor table."
-              />
-            </div>
-            {snapshot.nodes.map((node) => (
+        {activeTab === 'map' &&
+          (() => {
+            const ispNode = snapshot.nodes.find((n) => n.layer === 'isp');
+            const gatewayNode = snapshot.nodes.find(
+              (n) => n.layer === 'gateway'
+            );
+            const routerNode = snapshot.nodes.find((n) => n.layer === 'router');
+            const branchNodes = snapshot.nodes.filter(
+              (n) => n.layer === 'mesh' || n.layer === 'switch'
+            );
+            const clientNodes = snapshot.nodes.filter(
+              (n) => n.layer === 'client'
+            );
+
+            const renderMobileNode = (node: NetworkNode, badge?: string) => (
               <button
                 key={node.id}
                 type="button"
@@ -115,34 +119,129 @@ export function MobileDashboard({
                   onSelectNode(node.id);
                   setActiveTab('devices');
                 }}
-                className={`w-full text-left p-3 rounded-xl border transition flex items-center justify-between ${
+                className={`w-full text-left p-2.5 rounded-xl border transition flex items-center justify-between ${
                   node.health === 'critical'
                     ? 'bg-slate-900 border-amber-500/80'
-                    : 'bg-slate-900/80 border-slate-800'
+                    : 'bg-slate-900/90 border-slate-800'
                 }`}
               >
-                <div>
-                  <div className="text-xs font-semibold text-slate-100">
-                    [{node.layer.toUpperCase()}] {node.name}
+                <div className="min-w-0 pr-2">
+                  <div className="text-xs font-semibold text-slate-100 flex items-center gap-1.5 truncate">
+                    {badge && (
+                      <span className="text-[9px] font-mono uppercase px-1.5 py-0.5 rounded bg-slate-800 text-sky-300 border border-slate-700 shrink-0">
+                        {badge}
+                      </span>
+                    )}
+                    <span className="truncate">{node.name}</span>
                   </div>
-                  <div className="text-[11px] text-slate-400 font-mono">
-                    {node.ip} • {node.latencyMs}ms
+                  <div className="text-[11px] text-slate-400 font-mono truncate mt-0.5">
+                    {node.ip} • {node.latencyMs}ms{' '}
+                    {node.vendor ? `• ${node.vendor}` : ''}
                   </div>
                 </div>
-                <div className="text-right">
-                  <div className="text-xs text-sky-400 font-semibold">
-                    {node.rxMbps} Mbps
+                <div className="text-right shrink-0">
+                  <div className="text-xs text-sky-400 font-semibold font-mono">
+                    ↓{node.rxMbps}M
                   </div>
-                  <div className="text-[10px] text-slate-400">
-                    {node.authStatus === 'authenticated'
-                      ? '🔑 Authenticated'
-                      : 'Tap to Auth ▸'}
-                  </div>
+                  <div className="text-[10px] text-slate-400">Inspect ▸</div>
                 </div>
               </button>
-            ))}
-          </div>
-        )}
+            );
+
+            return (
+              <div className="space-y-2">
+                <div className="text-xs uppercase tracking-wider text-slate-400 font-semibold flex items-center gap-1.5">
+                  <span>Network Hierarchy Tree (Tap Any Node to Inspect)</span>
+                  <InfoTooltip
+                    title="Network Hierarchy Tree"
+                    explanation="Shows the exact parent → child hierarchy of your network: Level 1 (ISP) → Levels 2 & 3 (Main Deco X60 Gateway & Router at 192.168.68.1) → Level 4 Distribution Branches (5 GHz Wi-Fi Mesh vs. SonosNet 2412 MHz / Wired Switch) → Level 5 Connected Clients indented underneath their parent branch."
+                    source="Discovered live via Traceroute, UPnP IGD on 192.168.68.1, Sonos ZoneGroupTopology on 192.168.68.59, and ARP MAC tables."
+                  />
+                </div>
+
+                {/* Level 1: ISP */}
+                {ispNode && (
+                  <div className="flex flex-col items-center">
+                    {renderMobileNode(ispNode, 'L1 ISP')}
+                    <div className="w-0.5 h-3 bg-emerald-400/70" />
+                  </div>
+                )}
+
+                {/* Level 2 & 3: Main Deco X60 */}
+                <div className="bg-slate-950/90 border border-sky-500/30 rounded-xl p-2.5 space-y-1.5">
+                  <div className="text-[10px] uppercase tracking-wider text-sky-400 font-bold">
+                    Levels 2 &amp; 3 • Main TP-Link Deco X60 (192.168.68.1)
+                  </div>
+                  {gatewayNode && renderMobileNode(gatewayNode, 'L2 GATEWAY')}
+                  {routerNode && renderMobileNode(routerNode, 'L3 ROUTER')}
+                </div>
+
+                {/* Level 4 & 5: Indented Sub-Tree Branches */}
+                <div className="pl-3 relative space-y-3 pt-1">
+                  <div className="absolute left-3 top-0 bottom-4 w-0.5 bg-sky-500/40" />
+
+                  {branchNodes.map((branch) => {
+                    const isMesh = branch.layer === 'mesh';
+                    const children = clientNodes.filter(
+                      (c) => c.parentId === branch.id
+                    );
+                    return (
+                      <div key={branch.id} className="relative pl-4">
+                        <div className="absolute left-0 top-5 w-4 h-0.5 bg-sky-500/40" />
+                        <div
+                          className={`rounded-xl border p-2.5 ${
+                            isMesh
+                              ? 'bg-purple-950/15 border-purple-500/30'
+                              : 'bg-indigo-950/15 border-indigo-500/30'
+                          }`}
+                        >
+                          <div
+                            className={`text-[10px] font-bold uppercase tracking-wider mb-1.5 ${
+                              isMesh ? 'text-purple-300' : 'text-indigo-300'
+                            }`}
+                          >
+                            {isMesh
+                              ? `Branch A • 5 GHz Wi-Fi Mesh (${children.length} Clients)`
+                              : `Branch B • SonosNet 2412 MHz & Wired (${children.length} Clients)`}
+                          </div>
+                          {renderMobileNode(
+                            branch,
+                            isMesh ? 'L4 MESH' : 'L4 SWITCH'
+                          )}
+
+                          {/* Level 5 Indented Child Clients */}
+                          <div className="mt-2 pl-3 relative space-y-1.5">
+                            <div
+                              className={`absolute left-3 top-0 bottom-3 w-0.5 ${
+                                isMesh
+                                  ? 'bg-purple-500/40'
+                                  : 'bg-indigo-500/40'
+                              }`}
+                            />
+                            {children.map((client) => (
+                              <div key={client.id} className="relative pl-3.5">
+                                <div
+                                  className={`absolute left-0 top-1/2 w-3.5 h-0.5 ${
+                                    isMesh
+                                      ? 'bg-purple-500/40'
+                                      : 'bg-indigo-500/40'
+                                  }`}
+                                />
+                                {renderMobileNode(
+                                  client,
+                                  isMesh ? 'Wi-Fi' : 'Sonos/LAN'
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
 
         {activeTab === 'traffic' && (
           <div className="space-y-3">

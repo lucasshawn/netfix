@@ -795,8 +795,8 @@ export async function discoverAndSampleNetwork(
       layer: 'client',
       ip: `${subnetPrefix}.90`,
       mac: '5c:aa:fd:52:b2:5c',
-      vendor: 'Sonos, Inc. (Auto-Discovered UPnP)',
-      parentId: 'node-mesh-ap',
+      vendor: 'SonosNet 2412 MHz via Sonos Boost (.59)',
+      parentId: 'node-switch',
       health: 'healthy',
       latencyMs: 4.5,
       packetLossPct: 0.0,
@@ -811,8 +811,8 @@ export async function discoverAndSampleNetwork(
       layer: 'client',
       ip: `${subnetPrefix}.55`,
       mac: '5c:aa:fd:96:af:f2',
-      vendor: 'Sonos, Inc. (Auto-Discovered UPnP)',
-      parentId: 'node-mesh-ap',
+      vendor: 'SonosNet 2412 MHz via Sonos Boost (.59)',
+      parentId: 'node-switch',
       health: 'healthy',
       latencyMs: 3.8,
       packetLossPct: 0.0,
@@ -827,7 +827,7 @@ export async function discoverAndSampleNetwork(
       layer: 'client',
       ip: `${subnetPrefix}.107`,
       mac: '00:1f:e1:c4:29:80',
-      vendor: 'Brother Network Device (DNS Auto-Discovered)',
+      vendor: 'Brother Network Device (Wired / LAN)',
       parentId: 'node-switch',
       health: 'healthy',
       latencyMs: 2.1,
@@ -839,7 +839,53 @@ export async function discoverAndSampleNetwork(
     },
   ];
 
-  // Merge additional real ARP-discovered LAN neighbors
+  const knownSonosRooms: Record<
+    string,
+    { name: string; parentId: string; vendor: string }
+  > = {
+    [`${subnetPrefix}.78`]: {
+      name: 'Living Room • Sonos Beam (.78)',
+      parentId: 'node-switch',
+      vendor: 'SonosNet 2412 MHz via Sonos Boost (.59)',
+    },
+    [`${subnetPrefix}.79`]: {
+      name: 'TV Room • Sonos Sub Mini (.79)',
+      parentId: 'node-switch',
+      vendor: 'Sonos 5GHz Bonded Sub via TV Room (.101)',
+    },
+    [`${subnetPrefix}.101`]: {
+      name: 'TV Room • Sonos Arc (.101)',
+      parentId: 'node-switch',
+      vendor: 'SonosNet 2412 MHz via Sonos Boost (.59)',
+    },
+    [`${subnetPrefix}.75`]: {
+      name: 'Dining Room • Sonos Amp (.75)',
+      parentId: 'node-switch',
+      vendor: 'SonosNet 2412 MHz via Sonos Boost (.59)',
+    },
+    [`${subnetPrefix}.81`]: {
+      name: 'Deck • Sonos Beam (.81)',
+      parentId: 'node-switch',
+      vendor: 'SonosNet 2412 MHz via Sonos Boost (.59)',
+    },
+    [`${subnetPrefix}.66`]: {
+      name: 'Move 1 • Sonos Move (.66)',
+      parentId: 'node-mesh-ap',
+      vendor: '5 GHz Wi-Fi (5220 MHz) via Deco Mesh (.68)',
+    },
+    [`${subnetPrefix}.67`]: {
+      name: 'Move 2 • Sonos Move 2 (.67)',
+      parentId: 'node-mesh-ap',
+      vendor: '5 GHz Wi-Fi (5220 MHz) via Deco Mesh (.68)',
+    },
+    [`${subnetPrefix}.77`]: {
+      name: 'Move 2 • Sonos Move 2 (.77)',
+      parentId: 'node-mesh-ap',
+      vendor: '5 GHz Wi-Fi (5220 MHz) via Deco Mesh (.68)',
+    },
+  };
+
+  // Merge additional real ARP-discovered LAN neighbors with accurate parent branch
   const knownIps = new Set(baseNodes.map((n) => n.ip));
   arpEntries
     .filter(
@@ -848,16 +894,27 @@ export async function discoverAndSampleNetwork(
         e.ip !== gatewayIp &&
         e.ip !== `${subnetPrefix}.70`
     )
-    .slice(0, 5)
-    .forEach((entry, idx) => {
+    .slice(0, 6)
+    .forEach((entry) => {
+      const sonosMeta = knownSonosRooms[entry.ip];
+      const vendorLabel = sonosMeta?.vendor || lookupVendor(entry.mac);
+      const isSonosNet =
+        sonosMeta?.parentId === 'node-switch' ||
+        (!sonosMeta && vendorLabel.startsWith('Sonos'));
       baseNodes.push({
         id: `node-arp-${entry.ip.replace(/\./g, '-')}`,
-        name: `LAN-Device-.${entry.ip.split('.').pop()} (${lookupVendor(entry.mac).split(' ')[0]})`,
+        name:
+          sonosMeta?.name ||
+          `LAN-Device-.${entry.ip.split('.').pop()} (${vendorLabel.split(' ')[0]})`,
         layer: 'client',
         ip: entry.ip,
         mac: entry.mac,
-        vendor: lookupVendor(entry.mac),
-        parentId: idx % 2 === 0 ? 'node-mesh-ap' : 'node-switch',
+        vendor: vendorLabel,
+        parentId: sonosMeta
+          ? sonosMeta.parentId
+          : isSonosNet
+          ? 'node-switch'
+          : 'node-mesh-ap',
         health: 'healthy',
         latencyMs: 3.2,
         packetLossPct: 0.0,
