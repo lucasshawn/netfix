@@ -68,7 +68,7 @@ podman run -d `
 if ($LASTEXITCODE -ne 0) { throw "Failed to start netfix-hub container" }
 
 # Start user-space LAN TCP forwarder so LAN interfaces (e.g. 192.168.68.73:3000) reach Podman 127.0.0.1:3000
-Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like "*lan-proxy.mjs*" } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+Get-CimInstance Win32_Process | Where-Object { $_.Name -eq "node.exe" -and $_.CommandLine -like "*lan-proxy.mjs*" } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 $bindList = ($lanIps -join ",")
 $proxyScript = Join-Path $PSScriptRoot "lan-proxy.mjs"
 $env:NETFIX_PORT = "$Port"

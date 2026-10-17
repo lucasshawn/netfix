@@ -1,26 +1,32 @@
 import net from 'net';
+import os from 'os';
 
 const port = Number(process.env.NETFIX_PORT || 3000);
-const hostIps = (process.env.NETFIX_BIND_IPS || '')
-  .split(',')
-  .map((s) => s.trim())
-  .filter(Boolean);
+const interfaces = os.networkInterfaces();
 
-for (const bindIp of hostIps) {
-  const server = net.createServer((clientSocket) => {
-    const upstream = net.connect({ host: '127.0.0.1', port }, () => {
-      clientSocket.pipe(upstream);
-      upstream.pipe(clientSocket);
+for (const name of Object.keys(interfaces)) {
+  for (const iface of interfaces[name] || []) {
+    if (iface.internal) continue;
+    const bindAddr =
+      iface.family === 'IPv6' && iface.scopeid
+        ? `${iface.address}%${iface.scopeid}`
+        : iface.address;
+
+    const server = net.createServer((clientSocket) => {
+      const upstream = net.connect({ host: '127.0.0.1', port }, () => {
+        clientSocket.pipe(upstream);
+        upstream.pipe(clientSocket);
+      });
+      upstream.on('error', () => clientSocket.destroy());
+      clientSocket.on('error', () => upstream.destroy());
     });
-    upstream.on('error', () => clientSocket.destroy());
-    clientSocket.on('error', () => upstream.destroy());
-  });
 
-  server.on('error', () => {
-    // Ignore if already bound
-  });
+    server.on('error', () => {
+      // Ignore if already bound on this interface
+    });
 
-  server.listen(port, bindIp, () => {
-    console.log(`LAN proxy forwarding ${bindIp}:${port} -> 127.0.0.1:${port}`);
-  });
+    server.listen(port, bindAddr, () => {
+      console.log(`LAN proxy forwarding [${bindAddr}]:${port} -> 127.0.0.1:${port}`);
+    });
+  }
 }
