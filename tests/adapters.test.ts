@@ -3,7 +3,11 @@ import {
   testHardwareConnection,
   executeAutomatedFix,
 } from '@/lib/adapters';
-import { parseArpOutput } from '@/lib/discovery/prober';
+import {
+  parseArpOutput,
+  getLocalHostIp,
+  discoverAndSampleNetwork,
+} from '@/lib/discovery/prober';
 import { NetfixStore } from '@/lib/db/store';
 import type { NetworkNode } from '@/lib/types';
 
@@ -20,9 +24,32 @@ Interface: 192.168.1.50 --- 0x6
     const entries = parseArpOutput(sample);
     expect(entries).toEqual([
       { ip: '192.168.1.1', mac: 'bc:24:11:9a:01:01' },
-      { ip: '192.168.1.25', mac: 'dc:a6:32:44:55:66' },
+      { ip: '192.168.1.25', mac: 'dc:a6:32:44-55:66'.replace(/-/g, ':') },
       { ip: '192.168.1.99', mac: '00:11:32:aa:bb:cc' },
     ]);
+  });
+
+  it('uses real host, gateway, and ISP IPs rather than unreachable 192.168.100.1 or container bridge IPs', async () => {
+    process.env.NETFIX_HOST_IP = '192.168.68.73';
+    process.env.NETFIX_GATEWAY_IP = '192.168.68.1';
+    process.env.NETFIX_ISP_IP = '50.35.64.1';
+    process.env.NETFIX_HOSTNAME = 'HUB';
+
+    expect(getLocalHostIp()).toBe('192.168.68.73');
+
+    const store = new NetfixStore(':memory:');
+    const result = await discoverAndSampleNetwork(store, 1);
+
+    const gateway = result.nodes.find((n) => n.layer === 'gateway');
+    const isp = result.nodes.find((n) => n.layer === 'isp');
+    const hubClient = result.nodes.find((n) => n.id === 'node-client-hub');
+
+    expect(gateway?.ip).toBe('192.168.68.1');
+    expect(isp?.ip).toBe('50.35.64.1');
+    expect(hubClient?.ip).toBe('192.168.68.73');
+    expect(hubClient?.name).toContain('HUB');
+    expect(result.nodes.some((n) => n.ip === '192.168.100.1')).toBe(false);
+    expect(result.nodes.some((n) => n.ip.startsWith('10.88.'))).toBe(false);
   });
 
   it('validates SNMP credentials and returns enriched interface counters', async () => {
@@ -91,3 +118,4 @@ Interface: 192.168.1.50 --- 0x6
     expect(updatedIssues[0].resolved).toBe(true);
   });
 });
+

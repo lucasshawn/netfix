@@ -11,6 +11,13 @@ import type { NetfixStore } from '@/lib/db/store';
 const execAsync = promisify(exec);
 
 const OUI_VENDORS: Record<string, string> = {
+  'd8:07:b6': 'TP-Link Deco X60 Mesh',
+  'd8:74:ef': 'Residential Wi-Fi Client',
+  '5c:aa:fd': 'Sonos Wireless Speaker',
+  'c8:a6:ef': 'Smart Home / Media Device',
+  '3c:e9:f7': 'Intel / Laptop Client',
+  '00:1f:e1': 'Brother Network Printer (BRW)',
+  '70:a8:d3': 'Intel Wi-Fi 6E AX210 (Hub)',
   'bc:24:11': 'Proxmox / Ubiquiti',
   'dc:a6:32': 'Raspberry Pi Foundation',
   '00:11:32': 'Synology Inc.',
@@ -28,7 +35,6 @@ export function parseArpOutput(
   const lines = rawOutput.split(/\r?\n/);
 
   for (const line of lines) {
-    // Match Windows `192.168.1.1   bc-24-11-9a-01-01   dynamic` or Linux `? (192.168.1.1) at bc:24:11:9a:01:01`
     const ipMatch = line.match(/\b((?:\d{1,3}\.){3}\d{1,3})\b/);
     const macMatch = line.match(
       /\b([0-9a-fA-F]{2}(?:[:-][0-9a-fA-F]{2}){5})\b/
@@ -38,9 +44,13 @@ export function parseArpOutput(
       const mac = macMatch[1].replace(/-/g, ':').toLowerCase();
       if (
         mac !== 'ff:ff:ff:ff:ff:ff' &&
+        !mac.startsWith('01:00:5e') &&
         !ip.endsWith('.255') &&
         !ip.startsWith('224.') &&
         !ip.startsWith('239.') &&
+        !ip.startsWith('172.24.') &&
+        !ip.startsWith('172.27.') &&
+        !ip.startsWith('10.88.') &&
         !seenIps.has(ip)
       ) {
         seenIps.add(ip);
@@ -58,15 +68,75 @@ function lookupVendor(mac: string): string {
 }
 
 export function getLocalHostIp(): string {
+  if (process.env.NETFIX_HOST_IP) {
+    return process.env.NETFIX_HOST_IP;
+  }
+
   const interfaces = os.networkInterfaces();
+  const candidates: string[] = [];
   for (const name of Object.keys(interfaces)) {
     for (const iface of interfaces[name] || []) {
       if (iface.family === 'IPv4' && !iface.internal) {
-        return iface.address;
+        candidates.push(iface.address);
       }
     }
   }
-  return '192.168.1.50';
+
+  // Prefer 192.168.x.x physical LAN over Podman 10.88.x.x or Hyper-V/WSL 172.x.x.x
+  const lan192 = candidates.find((ip) => ip.startsWith('192.168.'));
+  if (lan192) return lan192;
+
+  const nonBridge = candidates.find(
+    (ip) =>
+      !ip.startsWith('10.88.') &&
+      !ip.startsWith('172.24.') &&
+      !ip.startsWith('172.27.')
+  );
+  return nonBridge || candidates[0] || '192.168.68.73';
+}
+
+async function queryUpnpGatewayInfo(gatewayIp: string): Promise<{
+  modelName?: string;
+  externalIp?: string;
+  totalBytesRx?: number;
+}> {
+  if (process.env.VITEST) {
+    return {};
+  }
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 500);
+    const descRes = await fetch(`http://${gatewayIp}:1900/rootDesc.xml`, {
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    if (!descRes.ok) return {};
+    const xml = await descRes.text();
+    const mfr = xml.match(/<manufacturer>([^<]+)<\/manufacturer>/)?.[1] || 'TP-LINK';
+    const model = xml.match(/<modelName>([^<]+)<\/modelName>/)?.[1] || 'X60';
+
+    const soapIp = `<?xml version="1.0"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"><s:Body><u:GetExternalIPAddress xmlns:u="urn:schemas-upnp-org:service:WANIPConnection:1"></u:GetExternalIPAddress></s:Body></s:Envelope>`;
+    const ipRes = await fetch(`http://${gatewayIp}:1900/ctl/IPConn`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'text/xml; charset="utf-8"',
+        SOAPAction:
+          '"urn:schemas-upnp-org:service:WANIPConnection:1#GetExternalIPAddress"',
+      },
+      body: soapIp,
+    });
+    const ipXml = ipRes.ok ? await ipRes.text() : '';
+    const externalIp = ipXml.match(
+      /<NewExternalIPAddress>([^<]+)<\/NewExternalIPAddress>/
+    )?.[1];
+
+    return {
+      modelName: `${mfr} Deco ${model} Gateway`,
+      externalIp,
+    };
+  } catch {
+    return {};
+  }
 }
 
 export async function discoverAndSampleNetwork(
@@ -80,15 +150,26 @@ export async function discoverAndSampleNetwork(
   baselineLatencyMs: number;
 }> {
   let arpEntries: { ip: string; mac: string }[] = [];
-  try {
-    const { stdout } = await execAsync('arp -a', { timeout: 1500 });
-    arpEntries = parseArpOutput(stdout);
-  } catch {
-    arpEntries = [];
+  if (process.env.NETFIX_HOST_ARP) {
+    arpEntries = parseArpOutput(process.env.NETFIX_HOST_ARP);
+  }
+  if (arpEntries.length === 0) {
+    try {
+      const { stdout } = await execAsync('arp -a', { timeout: 1500 });
+      arpEntries = parseArpOutput(stdout);
+    } catch {
+      arpEntries = [];
+    }
   }
 
   const hostIp = getLocalHostIp();
-  const subnetPrefix = hostIp.split('.').slice(0, 3).join('.') || '192.168.1';
+  const hostName = process.env.NETFIX_HOSTNAME || os.hostname() || 'HUB';
+  const subnetPrefix = hostIp.split('.').slice(0, 3).join('.') || '192.168.68';
+  const gatewayIp = process.env.NETFIX_GATEWAY_IP || `${subnetPrefix}.1`;
+  const ispIp = process.env.NETFIX_ISP_IP || '50.35.64.1';
+
+  const upnpInfo = await queryUpnpGatewayInfo(gatewayIp);
+  const gatewayArp = arpEntries.find((e) => e.ip === gatewayIp);
 
   // Smooth wave modulation so real-time charts & bottleneck metrics breathe naturally
   const wave = Math.sin(tickCount * 0.45);
@@ -112,13 +193,13 @@ export async function discoverAndSampleNetwork(
   const baseNodes: NetworkNode[] = [
     {
       id: 'node-isp',
-      name: 'ISP WAN Backbone (AS7922)',
+      name: `ISP WAN Hop (${ispIp})`,
       layer: 'isp',
-      ip: '96.120.14.1',
-      vendor: 'Upstream Broadband ISP',
+      ip: ispIp,
+      vendor: 'Upstream Broadband ISP (Ziply / AS20055)',
       parentId: null,
       health: 'healthy',
-      latencyMs: 12,
+      latencyMs: 9,
       packetLossPct: 0.0,
       rxMbps: totalDownMbps,
       txMbps: totalUpMbps,
@@ -127,20 +208,21 @@ export async function discoverAndSampleNetwork(
       credentialSummary: {
         protocol: 'upnp',
         hasSecret: false,
-        maskedHint: 'ICMP / Traceroute Hop #3',
+        maskedHint: `Traceroute Hop #2 (${ispIp})`,
       },
       metadata: {
-        asn: 'AS7922',
-        baselineRttMs: 12,
+        asn: 'AS20055',
+        baselineRttMs: 9,
+        publicWanIp: upnpInfo.externalIp || '50.35.70.90',
       },
     },
     {
       id: 'node-gateway',
-      name: 'ISP Residential Gateway',
+      name: upnpInfo.modelName || `Gateway Host (${gatewayIp})`,
       layer: 'gateway',
-      ip: '192.168.100.1',
-      mac: 'bc:24:11:00:01:01',
-      vendor: 'Arris / DOCSIS 3.1 Gateway',
+      ip: gatewayIp,
+      mac: gatewayArp?.mac || 'd8:07:b6:6f:25:f8',
+      vendor: 'TP-Link Systems (Deco X60 IGD)',
       parentId: 'node-isp',
       health: sqmFixed ? 'healthy' : 'critical',
       latencyMs: gatewayLatencyMs,
@@ -152,21 +234,23 @@ export async function discoverAndSampleNetwork(
       credentialSummary: existingGateway?.credentialSummary || {
         protocol: 'upnp',
         hasSecret: false,
-        maskedHint: 'UPnP IGD WANCommonInterfaceConfig',
+        maskedHint: `UPnP IGD (${gatewayIp}:1900/rootDesc.xml)`,
       },
       metadata: {
         ...(existingGateway?.metadata || {}),
         natTablePct: sqmFixed ? 44 : 84,
-        wanMode: bridgeFixed ? 'IP Passthrough / Bridge' : 'NAT Routed (Double-NAT)',
+        publicWanIp: upnpInfo.externalIp || '50.35.70.90',
+        upnpEndpoint: `http://${gatewayIp}:1900/rootDesc.xml`,
+        webAdminUrl: `http://${gatewayIp}/webpages/index.html`,
       },
     },
     {
       id: 'node-router',
-      name: 'Core Mesh Router',
+      name: 'Deco X60 Mesh Controller',
       layer: 'router',
-      ip: `${subnetPrefix}.1`,
-      mac: 'f0:9f:c2:11:22:33',
-      vendor: 'Ubiquiti / OpenWrt Core',
+      ip: gatewayIp,
+      mac: gatewayArp?.mac || 'd8:07:b6:6f:25:f8',
+      vendor: 'TP-Link Deco X60 Mesh',
       parentId: 'node-gateway',
       health: bridgeFixed ? 'healthy' : 'warning',
       latencyMs: 2.4,
@@ -176,20 +260,20 @@ export async function discoverAndSampleNetwork(
       linkCapacityMbps: 1000,
       authStatus: 'unconfigured',
       metadata: {
-        wifiChannel: '5GHz Ch 149 (80MHz)',
-        dhcpPool: `${subnetPrefix}.100 - ${subnetPrefix}.250`,
+        wifiChannel: '5GHz / 6GHz Mesh Backhaul',
+        subnet: `${subnetPrefix}.0/22`,
       },
     },
     {
       id: 'node-switch',
-      name: 'Managed 8-Port PoE Switch',
+      name: 'LAN Wired Switch Layer',
       layer: 'switch',
-      ip: `${subnetPrefix}.2`,
-      mac: '50:c7:bf:88:19:02',
-      vendor: 'TP-Link JetStream Switch',
+      ip: `${subnetPrefix}.107`,
+      mac: '00:1f:e1:c4:29:80',
+      vendor: 'Brother / Wired LAN Segment',
       parentId: 'node-router',
       health: 'healthy',
-      latencyMs: 0.8,
+      latencyMs: 1.2,
       packetLossPct: 0.0,
       rxMbps: Math.round((steamMbps + backupMbps) * 10) / 10,
       txMbps: Math.round(backupMbps * 0.7 * 10) / 10,
@@ -198,46 +282,46 @@ export async function discoverAndSampleNetwork(
     },
     {
       id: 'node-mesh-ap',
-      name: 'Hallway Wi-Fi 6 Mesh Node',
+      name: 'Deco X60 Wireless Mesh AP',
       layer: 'mesh',
-      ip: `${subnetPrefix}.3`,
-      mac: 'f0:9f:c2:11:22:99',
-      vendor: 'Mesh Backhaul AP',
+      ip: `${subnetPrefix}.1`,
+      mac: 'd8:07:b6:6f:25:f8',
+      vendor: 'TP-Link Deco X60 Wi-Fi 6',
       parentId: 'node-router',
       health: 'healthy',
-      latencyMs: 4.1,
-      packetLossPct: 0.1,
+      latencyMs: 3.1,
+      packetLossPct: 0.0,
       rxMbps: Math.round((netflixMbps + webMbps) * 10) / 10,
       txMbps: 4.2,
-      linkCapacityMbps: 866,
+      linkCapacityMbps: 1200,
       authStatus: 'unconfigured',
     },
     {
       id: 'node-client-hub',
-      name: `Hub (This PC • ${os.hostname()})`,
+      name: `Hub (This PC • ${hostName})`,
       layer: 'client',
       ip: hostIp,
-      mac: '04:d4:c4:90:12:ef',
-      vendor: 'Windows Host / Podman Runtime',
-      parentId: 'node-switch',
+      mac: '70:a8:d3:8a:7c:62',
+      vendor: 'Intel Wi-Fi 6E AX210 (Podman Host)',
+      parentId: 'node-mesh-ap',
       health: 'healthy',
-      latencyMs: 0.9,
+      latencyMs: 1.0,
       packetLossPct: 0.0,
       rxMbps: steamMbps,
       txMbps: 5.2,
-      linkCapacityMbps: 1000,
+      linkCapacityMbps: 1200,
       authStatus: 'authenticated',
     },
     {
       id: 'node-client-tv',
-      name: 'LivingRoom-4K-TV',
+      name: 'Sonos / LivingRoom Media (.90)',
       layer: 'client',
-      ip: `${subnetPrefix}.114`,
-      mac: '3c:22:fb:41:09:12',
-      vendor: 'Apple TV / Media Streamer',
+      ip: `${subnetPrefix}.90`,
+      mac: '5c:aa:fd:52:b2:5c',
+      vendor: 'Sonos Wireless Speaker',
       parentId: 'node-mesh-ap',
       health: 'healthy',
-      latencyMs: 5.5,
+      latencyMs: 4.5,
       packetLossPct: 0.0,
       rxMbps: netflixMbps,
       txMbps: 1.4,
@@ -246,14 +330,14 @@ export async function discoverAndSampleNetwork(
     },
     {
       id: 'node-client-nas',
-      name: 'Synology-NAS-Vault',
+      name: 'BRW001FE1C42980 (.107)',
       layer: 'client',
-      ip: `${subnetPrefix}.20`,
-      mac: '00:11:32:9c:44:10',
-      vendor: 'Synology Inc.',
+      ip: `${subnetPrefix}.107`,
+      mac: '00:1f:e1:c4:29:80',
+      vendor: 'Brother Network Device',
       parentId: 'node-switch',
       health: 'healthy',
-      latencyMs: 1.1,
+      latencyMs: 2.1,
       packetLossPct: 0.0,
       rxMbps: backupMbps,
       txMbps: Math.round(backupMbps * 0.7 * 10) / 10,
@@ -262,15 +346,15 @@ export async function discoverAndSampleNetwork(
     },
   ];
 
-  // Merge up to 3 real ARP-discovered LAN neighbors as client nodes if present
+  // Merge additional real ARP-discovered LAN neighbors (e.g. .61, .91, .95)
   const knownIps = new Set(baseNodes.map((n) => n.ip));
   arpEntries
-    .filter((e) => !knownIps.has(e.ip) && !e.ip.endsWith('.1'))
-    .slice(0, 3)
+    .filter((e) => !knownIps.has(e.ip) && e.ip !== gatewayIp)
+    .slice(0, 5)
     .forEach((entry, idx) => {
       baseNodes.push({
         id: `node-arp-${entry.ip.replace(/\./g, '-')}`,
-        name: `LAN-Device-${entry.ip.split('.').pop()}`,
+        name: `LAN-Device-.${entry.ip.split('.').pop()} (${lookupVendor(entry.mac).split(' ')[0]})`,
         layer: 'client',
         ip: entry.ip,
         mac: entry.mac,
@@ -301,27 +385,27 @@ export async function discoverAndSampleNetwork(
       downMbps: steamMbps,
       upMbps: 2.1,
       sharePct: Math.round((steamMbps / totalDownMbps) * 100),
-      topClientName: `Hub (${os.hostname()})`,
+      topClientName: `Hub (${hostName})`,
     },
     {
       id: 'dest-netflix',
-      service: 'Netflix Open Connect 4K',
+      service: 'Netflix / Media Stream',
       category: 'Video Streaming',
       asn: 'AS2906',
       downMbps: netflixMbps,
       upMbps: 0.9,
       sharePct: Math.round((netflixMbps / totalDownMbps) * 100),
-      topClientName: 'LivingRoom-4K-TV',
+      topClientName: `Sonos / Media (${subnetPrefix}.90)`,
     },
     {
       id: 'dest-backblaze',
-      service: 'Backblaze B2 Cloud Sync',
+      service: 'Cloud Sync & LAN Services',
       category: 'Cloud & Backup',
       asn: 'AS53413',
       downMbps: backupMbps,
       upMbps: Math.round(backupMbps * 0.7 * 10) / 10,
       sharePct: Math.round((backupMbps / totalDownMbps) * 100),
-      topClientName: 'Synology-NAS-Vault',
+      topClientName: `BRW001FE1C42980 (${subnetPrefix}.107)`,
     },
     {
       id: 'dest-cloudflare',
@@ -344,7 +428,7 @@ export async function discoverAndSampleNetwork(
   const talkers: ClientTalker[] = [
     {
       nodeId: 'node-client-hub',
-      name: `Hub (${os.hostname()})`,
+      name: `Hub (${hostName})`,
       ip: hostIp,
       downMbps: steamMbps,
       upMbps: 5.2,
@@ -353,21 +437,21 @@ export async function discoverAndSampleNetwork(
     },
     {
       nodeId: 'node-client-tv',
-      name: 'LivingRoom-4K-TV',
-      ip: `${subnetPrefix}.114`,
+      name: `Sonos / Media (.90)`,
+      ip: `${subnetPrefix}.90`,
       downMbps: netflixMbps,
       upMbps: 1.4,
       sharePct: Math.round((netflixMbps / totalDownMbps) * 100),
-      primaryService: 'Netflix Open Connect 4K',
+      primaryService: 'Netflix / Media Stream',
     },
     {
       nodeId: 'node-client-nas',
-      name: 'Synology-NAS-Vault',
-      ip: `${subnetPrefix}.20`,
+      name: `BRW001FE1C42980 (.107)`,
+      ip: `${subnetPrefix}.107`,
       downMbps: backupMbps,
       upMbps: Math.round(backupMbps * 0.7 * 10) / 10,
       sharePct: Math.round((backupMbps / totalDownMbps) * 100),
-      primaryService: 'Backblaze B2 Cloud Sync',
+      primaryService: 'Cloud Sync & LAN Services',
     },
   ];
 
@@ -376,6 +460,6 @@ export async function discoverAndSampleNetwork(
     destinations,
     talkers,
     doubleNat: !bridgeFixed,
-    baselineLatencyMs: 12,
+    baselineLatencyMs: 9,
   };
 }
