@@ -55,11 +55,12 @@ export function calculateGatewayBottleneck(input: {
     status = 'warning';
   }
 
-  let summary = 'Gateway operating smoothly with low queueing delay.';
+  let summary =
+    'Your main gateway has plenty of breathing room — downloads and video calls are flowing smoothly without waiting in line.';
   if (score >= 75) {
-    summary = `Gateway bottlenecked (${score}%): Bufferbloat +${bufferbloatDeltaMs}ms under ${bandwidthSaturationPct}% WAN load.`;
+    summary = `Gateway bottlenecked (${score}%): Heavy downloads (${bandwidthSaturationPct}% of speed) are causing Bufferbloat (+${bufferbloatDeltaMs}ms extra lag for other devices).`;
   } else if (score >= 50) {
-    summary = `Elevated gateway load (${score}%): Queue delay +${bufferbloatDeltaMs}ms (${bandwidthSaturationPct}% capacity).`;
+    summary = `Moderate gateway load (${score}%): Traffic is adding +${bufferbloatDeltaMs}ms of waiting-line delay (${bandwidthSaturationPct}% of internet speed used).`;
   }
 
   return {
@@ -116,12 +117,12 @@ export function evaluateNetworkIssues(
       nodeName: gatewayNode?.name || 'ISP Gateway',
       layer: 'gateway',
       severity: gatewayMetrics.score >= 75 ? 'critical' : 'warning',
-      title: `Gateway Bufferbloat & Queue Saturation (+${gatewayMetrics.bufferbloatDeltaMs}ms)`,
-      description: `Heavy WAN downloads (${gatewayMetrics.wanDownMbps} Mbps, ${gatewayMetrics.bandwidthSaturationPct}% of capacity) are inflating gateway queue latency from ${gatewayMetrics.baselineLatencyMs}ms to ${gatewayMetrics.currentLatencyMs}ms.`,
+      title: `Internet Traffic Jam (Gateway Bufferbloat: +${gatewayMetrics.bufferbloatDeltaMs}ms Lag)`,
+      description: `A large download (${gatewayMetrics.wanDownMbps} Mbps, using ${gatewayMetrics.bandwidthSaturationPct}% of your internet pipe) is backing up your gateway's waiting line, slowing response times from ${gatewayMetrics.baselineLatencyMs}ms to ${gatewayMetrics.currentLatencyMs}ms for everyone else.`,
       suggestion:
-        'Enable Smart Queue Management (SQM / CAKE / FQ-CoDel) on the Gateway or Router and cap WAN shaper bandwidth to 92% of line rate.',
+        'Turn on Smart Traffic Prioritization (QoS / Smart Queue Management) so small, time-sensitive traffic (video calls, gaming, web pages) gets to skip ahead of giant file downloads.',
       canAutoFix: true,
-      autoFixActionLabel: 'Auto-Enable CAKE SQM QoS Shaper',
+      autoFixActionLabel: 'Turn On Smart Traffic Prioritization (QoS)',
       autoFixCommandPreview: `tc qdisc replace dev eth0 root cake bandwidth ${Math.round(gatewayMetrics.wanCapacityMbps * 0.92)}mbit diffserv4 nat`,
       resolved: false,
     });
@@ -134,13 +135,13 @@ export function evaluateNetworkIssues(
       nodeName: routerNode?.name || 'Core Router',
       layer: 'router',
       severity: 'warning',
-      title: 'Double-NAT Detected Across Router & ISP Gateway Layers',
+      title: 'Two Routers Managing the Same Network (Double-NAT)',
       description:
-        'Both the local Router hop and the upstream ISP Gateway hop are performing private network address translation (RFC1918), adding state table overhead and breaking UPnP/port-forwarding.',
+        'Two devices in a row are acting as routers and translating addresses separately. This adds extra work and can cause issues with online games, video calls, and smart-home devices.',
       suggestion:
-        'Place the upstream ISP Gateway into IP Passthrough / Bridge Mode, or configure the Core Router in Access Point / Bridge mode.',
+        'Put your ISP modem/gateway into "Bridge / Passthrough Mode", or set your Wi-Fi mesh router to "Access Point (AP) Mode" so only one device manages the network.',
       canAutoFix: true,
-      autoFixActionLabel: 'Configure Gateway DMZ / Passthrough to Router',
+      autoFixActionLabel: 'Switch Gateway to Bridge / Passthrough Mode',
       autoFixCommandPreview:
         'nvram set wan_passthrough_enable=1 && service restart_wan',
       resolved: false,
@@ -161,10 +162,10 @@ export function evaluateNetworkIssues(
         nodeName: node.name,
         layer: node.layer,
         severity: 'warning',
-        title: `Hardware Telemetry Locked on ${node.name}`,
-        description: `${node.name} (${node.ip}) was discovered via L2/L3 network probes, but lacks SNMP/SSH/HTTP credentials to inspect internal interface drops, CPU load, and hardware NAT tables.`,
+        title: `Internal Health Sensors Locked on ${node.name}`,
+        description: `${node.name} (${node.ip}) was found automatically on your network, but Netfix doesn't have login credentials to read its internal port counters or Wi-Fi health.`,
         suggestion:
-          'Select this node on the topology map and add SNMP v2c/v3, SSH, or HTTP credentials in the Node Credentials panel.',
+          'Click this device on the map and add SNMP, SSH, or Web credentials in Panel #3 to unlock deeper diagnostics.',
         canAutoFix: false,
         resolved: false,
       });
