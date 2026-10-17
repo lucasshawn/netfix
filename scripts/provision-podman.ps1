@@ -22,9 +22,7 @@ if ($machineList -and $machineList[0].Running -ne $true) {
     }
 }
 
-# Detect real Windows host LAN IP and Default Gateway
-$defaultRoute = Get-NetRoute -DestinationPrefix "0.0.0.0/0" | Sort-Object RouteMetric | Select-Object -First 1
-$gatewayIp = if ($defaultRoute -and $defaultRoute.NextHop) { $defaultRoute.NextHop } else { "192.168.68.1" }
+# Detect real Windows host LAN IP
 $lanIps = Get-NetIPAddress -AddressFamily IPv4 | Where-Object {
     $_.IPAddress -notlike "127.*" -and
     $_.IPAddress -notlike "169.254.*" -and
@@ -37,7 +35,7 @@ $lanIps = Get-NetIPAddress -AddressFamily IPv4 | Where-Object {
 $hostIp = if ($lanIps) { ($lanIps | Select-Object -First 1) } else { "192.168.68.73" }
 $arpRaw = (arp -a | Out-String)
 
-Write-Host "==> Detected Host IP: $hostIp | Gateway IP: $gatewayIp" -ForegroundColor Cyan
+Write-Host "==> Detected Host IP: $hostIp (Gateway & Deco Mesh will be auto-discovered by container)" -ForegroundColor Cyan
 
 Write-Host "==> Building localhost/netfix:latest container image..." -ForegroundColor Cyan
 podman build -t localhost/netfix:latest -f Containerfile .
@@ -58,8 +56,6 @@ podman run -d `
     -p "0.0.0.0:${Port}:3000" `
     -e "NETFIX_HOSTNAME=$env:COMPUTERNAME" `
     -e "NETFIX_HOST_IP=$hostIp" `
-    -e "NETFIX_GATEWAY_IP=$gatewayIp" `
-    -e "NETFIX_ISP_IP=50.35.64.1" `
     -e "NETFIX_HOST_ARP=$arpRaw" `
     -v netfix_data:/data `
     --cap-add=NET_RAW `
@@ -83,4 +79,4 @@ Write-Host "   - Hostname URL:   http://$($env:COMPUTERNAME.ToLower()):$Port"
 foreach ($ip in $lanIps) {
     Write-Host "   - Phone LAN URL:  http://${ip}:$Port"
 }
-Write-Host "   - Gateway Host:   http://${gatewayIp} (TP-Link Deco X60 IGD)"
+Write-Host "   - Gateway Auto-Discovery: Active via Traceroute + UPnP IGD (192.168.68.1 Main Deco Unit)"

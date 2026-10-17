@@ -5,6 +5,7 @@ import {
 } from '@/lib/adapters';
 import {
   parseArpOutput,
+  parseTracerouteOutput,
   getLocalHostIp,
   discoverAndSampleNetwork,
 } from '@/lib/discovery/prober';
@@ -29,10 +30,26 @@ Interface: 192.168.1.50 --- 0x6
     ]);
   });
 
-  it('uses real host, gateway, and ISP IPs rather than unreachable 192.168.100.1 or container bridge IPs', async () => {
+  it('auto-discovers from traceroute that the gateway is routed through the main Deco unit at 192.168.68.1 without user specifying', () => {
+    const containerTraceroute = `
+traceroute to 1.1.1.1 (1.1.1.1), 4 hops max, 60 byte packets
+ 1  10.88.0.1  0.059 ms  0.005 ms  0.002 ms
+ 2  172.27.240.1  0.415 ms  0.397 ms  0.387 ms
+ 3  192.168.68.1  3.847 ms  3.839 ms  3.829 ms
+ 4  50.35.64.1  11.770 ms  11.760 ms  11.751 ms
+    `;
+
+    const parsed = parseTracerouteOutput(containerTraceroute);
+    expect(parsed.gatewayIp).toBe('192.168.68.1');
+    expect(parsed.ispIp).toBe('50.35.64.1');
+    expect(parsed.lanHops).toHaveLength(1);
+    expect(parsed.doubleNat).toBe(false);
+  });
+
+  it('discovers real host, main Deco gateway (192.168.68.1), and ISP hop without false Double-NAT or unconfigured alerts on the main Deco unit', async () => {
+    delete process.env.NETFIX_GATEWAY_IP;
+    delete process.env.NETFIX_ISP_IP;
     process.env.NETFIX_HOST_IP = '192.168.68.73';
-    process.env.NETFIX_GATEWAY_IP = '192.168.68.1';
-    process.env.NETFIX_ISP_IP = '50.35.64.1';
     process.env.NETFIX_HOSTNAME = 'HUB';
 
     expect(getLocalHostIp()).toBe('192.168.68.73');
@@ -41,10 +58,15 @@ Interface: 192.168.1.50 --- 0x6
     const result = await discoverAndSampleNetwork(store, 1);
 
     const gateway = result.nodes.find((n) => n.layer === 'gateway');
+    const router = result.nodes.find((n) => n.layer === 'router');
     const isp = result.nodes.find((n) => n.layer === 'isp');
     const hubClient = result.nodes.find((n) => n.id === 'node-client-hub');
 
     expect(gateway?.ip).toBe('192.168.68.1');
+    expect(router?.ip).toBe('192.168.68.1');
+    expect(gateway?.authStatus).toBe('authenticated');
+    expect(router?.authStatus).toBe('authenticated');
+    expect(result.doubleNat).toBe(false);
     expect(isp?.ip).toBe('50.35.64.1');
     expect(hubClient?.ip).toBe('192.168.68.73');
     expect(hubClient?.name).toContain('HUB');
