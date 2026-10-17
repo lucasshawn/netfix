@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import type { NetworkLayer, NetworkNode } from '@/lib/types';
 import { InfoTooltip } from '@/components/ui/InfoTooltip';
+import { MiniSparkline } from '@/components/ui/MiniSparkline';
 
 interface TopologyMapProps {
   nodes: NetworkNode[];
@@ -169,16 +170,23 @@ function NodeCard({
         </div>
       )}
 
-      <div className="mt-1.5 flex items-center justify-between text-[11px]">
+      <div className="mt-1.5 flex items-center justify-between gap-2 text-[11px]">
         <span
-          className="text-sky-400 font-medium font-mono"
+          className="text-sky-400 font-medium font-mono shrink-0"
           title="Current Download (↓) and Upload (↑) speed in Megabits per second"
         >
           ↓ {node.rxMbps}M / ↑ {node.txMbps}M
         </span>
+        <MiniSparkline
+          rxHistory={node.rxHistory}
+          txHistory={node.txHistory}
+          width={compact ? 96 : 118}
+          height={compact ? 20 : 24}
+          className="w-24 sm:w-28 shrink-0"
+        />
         {node.layer !== 'client' && (
           <span
-            className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] ${
+            className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] shrink-0 ${
               node.authStatus === 'authenticated'
                 ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
                 : node.authStatus === 'auth_error'

@@ -21,6 +21,7 @@ import type {
   NetworkNode,
 } from '@/lib/types';
 import { InfoTooltip } from '@/components/ui/InfoTooltip';
+import { MiniSparkline } from '@/components/ui/MiniSparkline';
 
 function formatSessionSize(mb?: number): string {
   if (!mb) return '—';
@@ -707,17 +708,17 @@ export function InspectorSidebar({
         </div>
       </div>
 
-      {/* Card 3: Selected Node Credentials & Hardware Adapter */}
-      <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-4">
-        <div className="flex items-center justify-between mb-2">
+      {/* Card 3: Selected Device Live Activity, All Client Graphs & Hardware Login */}
+      <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-4 space-y-3">
+        <div className="flex items-center justify-between">
           <span className="text-xs font-semibold uppercase tracking-wider text-purple-400 flex items-center gap-1">
             <KeyRound className="w-4 h-4 shrink-0" />
-            <span>3. Device Login / Credentials: {selectedNode.name}</span>
+            <span>3. Device Activity &amp; Login: {selectedNode.name}</span>
             <InfoTooltip
-              title="Why Add Hardware Login Credentials?"
-              explanation="Out of the box, Netfix automatically discovers devices on your Wi-Fi and checks ping times and UPnP speeds without needing any passwords. However, routers and managed switches keep deeper health data locked behind a login. Providing credentials here lets Netfix look 'under the hood' of that specific device—and lets Netfix run 1-click automated fixes for you."
+              title="Device Live Stream Activity & Hardware Login"
+              explanation="Shows the live rolling download (↓ sky-blue) and upload (↑ emerald) stream activity graph for the selected device, plus a live sparkline directory of all connected clients and optional hardware login credentials."
               source="All passwords/keys are encrypted using military-grade AES-256-GCM inside your local SQLite database on Hub (/data/netfix.db) and never leave your home network."
-              action="Your TP-Link Deco X60 (192.168.68.1) already works automatically with 'UPnP IGD (Zero-Cred)'! If you have a managed switch or custom router that supports SNMP or SSH, select it on the map and enter its login here."
+              action="Click any client in the list below or on the map to inspect its live stream curve and active connections."
               align="right"
             />
           </span>
@@ -726,7 +727,74 @@ export function InspectorSidebar({
           </span>
         </div>
 
-        <form onSubmit={handleCredSubmit} className="space-y-2.5 text-xs">
+        {/* Selected Node Live Stream Activity Graph */}
+        <div className="bg-slate-950/80 border border-slate-800 rounded-lg p-2.5 space-y-1.5">
+          <div className="flex items-center justify-between text-xs">
+            <span className="font-semibold text-slate-200 truncate">
+              {selectedNode.name}{' '}
+              <span className="text-[10px] font-mono text-slate-400">
+                ({selectedNode.ip} • {selectedNode.latencyMs}ms)
+              </span>
+            </span>
+            <span className="font-mono text-sky-400 font-semibold shrink-0">
+              ↓ {selectedNode.rxMbps}M / ↑ {selectedNode.txMbps}M
+            </span>
+          </div>
+          <MiniSparkline
+            rxHistory={selectedNode.rxHistory}
+            txHistory={selectedNode.txHistory}
+            width={280}
+            height={42}
+            showLabels
+          />
+        </div>
+
+        {/* Per-Client Live Stream Activity Directory */}
+        <div className="space-y-1.5">
+          <div className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold flex items-center justify-between">
+            <span>Connected Devices Live Stream Activity</span>
+            <span className="font-mono text-slate-500">
+              {snapshot.nodes.filter((n) => n.layer === 'client').length} Clients
+            </span>
+          </div>
+          <div className="max-h-48 overflow-y-auto pr-1 space-y-1">
+            {snapshot.nodes
+              .filter((n) => n.layer === 'client')
+              .map((client) => {
+                const isSel = client.id === selectedNode.id;
+                return (
+                  <button
+                    key={client.id}
+                    type="button"
+                    onClick={() => onSelectNode && onSelectNode(client.id)}
+                    className={`w-full text-left px-2.5 py-1.5 rounded-lg border transition flex items-center justify-between gap-2 ${
+                      isSel
+                        ? 'bg-sky-950/40 border-sky-500/50'
+                        : 'bg-slate-950/50 border-slate-800/80 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[11px] font-medium text-slate-200 truncate">
+                        {client.name}
+                      </div>
+                      <div className="text-[10px] font-mono text-slate-400 truncate">
+                        {client.ip} • ↓{client.rxMbps}M / ↑{client.txMbps}M
+                      </div>
+                    </div>
+                    <MiniSparkline
+                      rxHistory={client.rxHistory}
+                      txHistory={client.txHistory}
+                      width={96}
+                      height={22}
+                      className="w-24 shrink-0"
+                    />
+                  </button>
+                );
+              })}
+          </div>
+        </div>
+
+        <form onSubmit={handleCredSubmit} className="space-y-2.5 text-xs pt-2 border-t border-slate-800/80">
           <div className="grid grid-cols-2 gap-2">
             <div>
               <label className="text-[11px] text-slate-400 mb-1 flex items-center">

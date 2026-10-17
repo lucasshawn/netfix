@@ -18,6 +18,7 @@ import type {
   NetworkNode,
 } from '@/lib/types';
 import { InfoTooltip } from '@/components/ui/InfoTooltip';
+import { MiniSparkline } from '@/components/ui/MiniSparkline';
 
 function formatSessionSize(mb?: number): string {
   if (!mb) return '—';
@@ -139,13 +140,13 @@ export function MobileDashboard({
                   onSelectNode(node.id);
                   setActiveTab('devices');
                 }}
-                className={`w-full text-left p-2.5 rounded-xl border transition flex items-center justify-between ${
+                className={`w-full text-left p-2.5 rounded-xl border transition flex items-center justify-between gap-2 ${
                   node.health === 'critical'
                     ? 'bg-slate-900 border-amber-500/80'
                     : 'bg-slate-900/90 border-slate-800'
                 }`}
               >
-                <div className="min-w-0 pr-2">
+                <div className="min-w-0 flex-1 pr-1">
                   <div className="text-xs font-semibold text-slate-100 flex items-center gap-1.5 truncate">
                     {badge && (
                       <span className="text-[9px] font-mono uppercase px-1.5 py-0.5 rounded bg-slate-800 text-sky-300 border border-slate-700 shrink-0">
@@ -159,11 +160,20 @@ export function MobileDashboard({
                     {node.vendor ? `• ${node.vendor}` : ''}
                   </div>
                 </div>
+                <MiniSparkline
+                  rxHistory={node.rxHistory}
+                  txHistory={node.txHistory}
+                  width={78}
+                  height={22}
+                  className="w-20 shrink-0"
+                />
                 <div className="text-right shrink-0">
                   <div className="text-xs text-sky-400 font-semibold font-mono">
                     ↓{node.rxMbps}M
                   </div>
-                  <div className="text-[10px] text-slate-400">Inspect ▸</div>
+                  <div className="text-[10px] text-slate-400 font-mono">
+                    ↑{node.txMbps}M ▸
+                  </div>
                 </div>
               </button>
             );
@@ -586,23 +596,30 @@ export function MobileDashboard({
                         onClick={() =>
                           setExpandedTalkerId(isExpanded ? null : t.nodeId)
                         }
-                        className="w-full flex justify-between items-center text-left"
+                        className="w-full flex justify-between items-center gap-2 text-left"
                       >
-                        <div>
-                          <div className="font-medium flex items-center gap-1">
+                        <div className="min-w-0 flex-1">
+                          <div className="font-medium flex items-center gap-1 truncate">
                             {isExpanded ? (
-                              <ChevronDown className="w-3.5 h-3.5 text-emerald-400" />
+                              <ChevronDown className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                             ) : (
-                              <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+                              <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                             )}
-                            <span>{t.name}</span>
+                            <span className="truncate">{t.name}</span>
                           </div>
-                          <div className="text-[10px] text-slate-400 font-mono ml-4">
+                          <div className="text-[10px] text-slate-400 font-mono ml-4 truncate">
                             {t.ip} • {t.primaryService}
                           </div>
                         </div>
-                        <div className="font-mono text-sky-300">
-                          ↓ {t.downMbps} Mbps
+                        <MiniSparkline
+                          rxHistory={t.rxHistory}
+                          txHistory={t.txHistory}
+                          width={78}
+                          height={22}
+                          className="w-20 shrink-0"
+                        />
+                        <div className="font-mono text-sky-300 shrink-0 text-right">
+                          ↓ {t.downMbps}M
                         </div>
                       </button>
 
@@ -697,42 +714,113 @@ export function MobileDashboard({
         )}
 
         {activeTab === 'devices' && (
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-3 text-xs">
-            <div className="font-bold text-purple-300 text-sm flex items-center gap-1.5">
-              <span>Configure Node Credentials: {selectedNode.name}</span>
-              <InfoTooltip
-                title="Hardware Login & Telemetry"
-                explanation="Optional login credentials that let Netfix read deeper per-port traffic counters from your router or switch. Encrypted with AES-256-GCM before saving."
-                source="Stored locally on Hub in SQLite; never sent to the cloud."
-              />
+          <div className="space-y-3">
+            {/* Selected Device Live Stream Activity & Credentials */}
+            <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-3 text-xs">
+              <div className="flex items-center justify-between">
+                <div className="font-bold text-purple-300 text-sm flex items-center gap-1.5">
+                  <span>Selected Device: {selectedNode.name}</span>
+                  <InfoTooltip
+                    title="Device Live Stream Activity & Hardware Login"
+                    explanation="Shows live download (↓ sky-blue) and upload (↑ emerald) stream activity for this device, plus optional hardware credentials encrypted with AES-256-GCM."
+                    source="Stored locally on Hub in SQLite; never sent to the cloud."
+                  />
+                </div>
+                <span className="text-slate-400 font-mono">
+                  {selectedNode.ip}
+                </span>
+              </div>
+
+              <div className="bg-slate-950/85 border border-slate-800 rounded-lg p-2.5 space-y-1.5">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-mono text-slate-300">
+                    {selectedNode.latencyMs}ms lag
+                    {selectedNode.vendor ? ` • ${selectedNode.vendor}` : ''}
+                  </span>
+                  <span className="font-mono text-sky-400 font-semibold">
+                    ↓ {selectedNode.rxMbps}M / ↑ {selectedNode.txMbps}M
+                  </span>
+                </div>
+                <MiniSparkline
+                  rxHistory={selectedNode.rxHistory}
+                  txHistory={selectedNode.txHistory}
+                  width={280}
+                  height={46}
+                  showLabels
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-400 mb-1">
+                  SNMP v2c Community / Credential Secret
+                </label>
+                <input
+                  type="password"
+                  value={community}
+                  onChange={(e) => setCommunity(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-100"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={async () => {
+                  const res = await onSaveCredentials(selectedNode.id, {
+                    protocol: 'snmp',
+                    port: 161,
+                    snmpVersion: '2c',
+                    community,
+                  });
+                  setStatusMessage(res.message);
+                }}
+                className="w-full bg-purple-600 text-white font-semibold py-2.5 rounded-lg"
+              >
+                Save &amp; Test Hardware Auth
+              </button>
             </div>
-            <div className="text-slate-400 font-mono">{selectedNode.ip}</div>
-            <div>
-              <label className="block text-slate-400 mb-1">
-                SNMP v2c Community / Credential Secret
-              </label>
-              <input
-                type="password"
-                value={community}
-                onChange={(e) => setCommunity(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-100"
-              />
+
+            {/* All Connected Devices Live Stream Activity List */}
+            <div className="bg-slate-900 border border-slate-800 rounded-xl p-3 space-y-2">
+              <div className="text-xs font-semibold uppercase tracking-wider text-sky-400 flex items-center justify-between">
+                <span>All Devices &amp; Live Stream Activity</span>
+                <span className="font-mono text-[10px] text-slate-400">
+                  {snapshot.nodes.length} Nodes
+                </span>
+              </div>
+              <div className="space-y-1.5">
+                {snapshot.nodes.map((node) => {
+                  const isSel = node.id === selectedNode.id;
+                  return (
+                    <button
+                      key={node.id}
+                      type="button"
+                      onClick={() => onSelectNode(node.id)}
+                      className={`w-full text-left p-2.5 rounded-lg border transition flex items-center justify-between gap-2 ${
+                        isSel
+                          ? 'bg-sky-950/40 border-sky-500/60'
+                          : 'bg-slate-950/50 border-slate-800'
+                      }`}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="text-xs font-semibold text-slate-100 truncate">
+                          {node.name}
+                        </div>
+                        <div className="text-[10px] font-mono text-slate-400 truncate">
+                          {node.ip} • {node.latencyMs}ms • ↓{node.rxMbps}M / ↑
+                          {node.txMbps}M
+                        </div>
+                      </div>
+                      <MiniSparkline
+                        rxHistory={node.rxHistory}
+                        txHistory={node.txHistory}
+                        width={92}
+                        height={24}
+                        className="w-24 shrink-0"
+                      />
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-            <button
-              type="button"
-              onClick={async () => {
-                const res = await onSaveCredentials(selectedNode.id, {
-                  protocol: 'snmp',
-                  port: 161,
-                  snmpVersion: '2c',
-                  community,
-                });
-                setStatusMessage(res.message);
-              }}
-              className="w-full bg-purple-600 text-white font-semibold py-2.5 rounded-lg"
-            >
-              Save &amp; Test Hardware Auth
-            </button>
           </div>
         )}
       </div>

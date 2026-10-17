@@ -44,6 +44,8 @@ export interface NetworkNode {
   lastAuthError?: string;
   credentialSummary?: CredentialSummary;
   metadata?: Record<string, string | number | boolean>;
+  rxHistory?: number[];
+  txHistory?: number[];
 }
 
 export interface TopologyEdge {
@@ -101,6 +103,8 @@ export interface ClientTalker {
   protocolPort?: string;
   sessionTransferredMb?: number;
   activeConnections?: number;
+  rxHistory?: number[];
+  txHistory?: number[];
 }
 
 export interface GatewayBottleneckMetrics {
