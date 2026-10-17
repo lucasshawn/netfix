@@ -55,7 +55,7 @@ export function MobileDashboard({
     snapshot.streams?.[0]?.id || snapshot.destinations[0]?.id || 'dest-live-0'
   );
   const [expandedTalkerId, setExpandedTalkerId] = useState<string | null>(null);
-  const [community, setCommunity] = useState('public');
+  const [community, setCommunity] = useState('');
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
   const activeIssues = snapshot.issues.filter((i) => !i.resolved);

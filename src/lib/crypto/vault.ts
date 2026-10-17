@@ -1,13 +1,48 @@
 import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
 import type { AdapterCredentials, CredentialSummary } from '@/lib/types';
 
-const DEFAULT_FALLBACK_KEY = crypto
-  .createHash('sha256')
-  .update(process.env.NETFIX_MASTER_KEY || 'netfix-local-hub-default-key-2026')
-  .digest('hex');
+let cachedLocalKeyHex: string | null = null;
+
+function getOrCreateLocalMasterKeyHex(): string {
+  if (process.env.NETFIX_MASTER_KEY) {
+    return process.env.NETFIX_MASTER_KEY;
+  }
+  if (cachedLocalKeyHex) {
+    return cachedLocalKeyHex;
+  }
+
+  const dbPath =
+    process.env.NETFIX_DB_PATH || path.join(process.cwd(), 'data', 'netfix.db');
+  const keyDir =
+    dbPath === ':memory:' ? path.join(process.cwd(), 'data') : path.dirname(dbPath);
+  const keyFile = path.join(keyDir, '.netfix-master.key');
+
+  try {
+    if (fs.existsSync(keyFile)) {
+      const existing = fs.readFileSync(keyFile, 'utf8').trim();
+      if (existing.length >= 64) {
+        cachedLocalKeyHex = existing;
+        return existing;
+      }
+    }
+    fs.mkdirSync(keyDir, { recursive: true });
+    const generated = crypto.randomBytes(32).toString('hex');
+    fs.writeFileSync(keyFile, generated, { encoding: 'utf8', mode: 0o600 });
+    cachedLocalKeyHex = generated;
+    return generated;
+  } catch {
+    // Ephemeral in-memory key if filesystem is read-only
+    if (!cachedLocalKeyHex) {
+      cachedLocalKeyHex = crypto.randomBytes(32).toString('hex');
+    }
+    return cachedLocalKeyHex;
+  }
+}
 
 function resolveKeyBuffer(secretKeyHex?: string): Buffer {
-  const hex = secretKeyHex || DEFAULT_FALLBACK_KEY;
+  const hex = secretKeyHex || getOrCreateLocalMasterKeyHex();
   const buf = Buffer.from(hex, 'hex');
   if (buf.length !== 32) {
     return crypto.createHash('sha256').update(hex).digest();

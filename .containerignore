@@ -4,6 +4,15 @@ node_modules
 .worktrees
 .superpowers
 data
+secrets
 *.db
 *.db-wal
 *.db-shm
+*.db-journal
+*.key
+*.secret
+*.pem
+.netfix-master.key
+.env
+.env.*
+tsconfig.tsbuildinfo

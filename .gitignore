@@ -5,13 +5,21 @@ node_modules/
 .next/
 dist/
 build/
+tsconfig.tsbuildinfo
+next-env.d.ts
 
-# Local runtime & database
+# Local runtime, encrypted credential databases & local keys (NEVER commit)
 data/
+secrets/
 *.db
 *.db-journal
 *.db-shm
 *.db-wal
+*.key
+*.secret
+*.pem
+*.credentials*
+.netfix-master.key
 
 # Environment & secrets
 .env
@@ -21,4 +29,3 @@ data/
 # Brainstorming visual companion session files
 .superpowers/
 .worktrees/
-

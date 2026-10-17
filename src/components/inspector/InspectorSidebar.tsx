@@ -61,10 +61,10 @@ export function InspectorSidebar({
     String(selectedNode.credentialSummary?.port || 161)
   );
   const [username, setUsername] = useState<string>(
-    selectedNode.credentialSummary?.username || 'admin'
+    selectedNode.credentialSummary?.username || ''
   );
   const [password, setPassword] = useState<string>('');
-  const [community, setCommunity] = useState<string>('public');
+  const [community, setCommunity] = useState<string>('');
   const [endpointUrl, setEndpointUrl] = useState<string>(
     selectedNode.credentialSummary?.endpointUrl ||
       `http://${selectedNode.ip}/api/status`
@@ -84,6 +84,9 @@ export function InspectorSidebar({
           (nextProto === 'ssh' ? 22 : nextProto === 'snmp' ? 161 : 80)
       )
     );
+    setUsername(selectedNode.credentialSummary?.username || '');
+    setPassword('');
+    setCommunity('');
     setEndpointUrl(
       selectedNode.credentialSummary?.endpointUrl ||
         `http://${selectedNode.ip}/api/status`
@@ -106,6 +109,10 @@ export function InspectorSidebar({
         endpointUrl: protocol === 'http' ? endpointUrl : undefined,
       });
       setFeedback(res);
+      if (res.ok) {
+        setPassword('');
+        setCommunity('');
+      }
     } finally {
       setBusy(false);
     }
@@ -837,6 +844,12 @@ export function InspectorSidebar({
               {feedback.message}
             </div>
           )}
+
+          <div className="text-[10px] text-slate-400 bg-slate-950/80 border border-slate-800/80 rounded p-2 font-mono">
+            🔒 Stored locally outside Git: AES-256-GCM encrypted in{' '}
+            <span className="text-sky-300">/data/netfix.db</span> using machine-local{' '}
+            <span className="text-emerald-300">%LOCALAPPDATA%\Netfix\master.key</span>
+          </div>
         </form>
       </div>
     </div>

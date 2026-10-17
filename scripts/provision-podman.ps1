@@ -41,19 +41,36 @@ Write-Host "==> Building localhost/netfix:latest container image..." -Foreground
 podman build -t localhost/netfix:latest -f Containerfile .
 if ($LASTEXITCODE -ne 0) { throw "Failed to build localhost/netfix:latest image" }
 
-Write-Host "==> Removing any existing netfix-hub container..." -ForegroundColor Cyan
+Write-Host "==> Removing any existing netfix-hub container (preserving local encrypted netfix_data volume)..." -ForegroundColor Cyan
 $prevErrorAction = $ErrorActionPreference
 $ErrorActionPreference = "Continue"
 podman stop -t 2 netfix-hub 2>$null | Out-Null
 podman rm -f --ignore netfix-hub 2>$null | Out-Null
-podman volume rm -f netfix_data 2>$null | Out-Null
 $ErrorActionPreference = $prevErrorAction
+
+# Ensure machine-local secret directory exists outside the Git repository (%LOCALAPPDATA%\Netfix)
+$localSecretDir = Join-Path $env:LOCALAPPDATA "Netfix"
+if (-not (Test-Path $localSecretDir)) {
+    New-Item -ItemType Directory -Path $localSecretDir -Force | Out-Null
+}
+$localKeyFile = Join-Path $localSecretDir "master.key"
+if (-not (Test-Path $localKeyFile)) {
+    $bytes = New-Object byte[] 32
+    [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+    $generatedKey = ($bytes | ForEach-Object { $_.ToString("x2") }) -join ""
+    Set-Content -Path $localKeyFile -Value $generatedKey -NoNewline -Encoding Ascii
+    Write-Host "==> Generated new 256-bit AES-GCM master key in $localKeyFile (outside git repo)" -ForegroundColor Green
+}
+$masterKeyHex = (Get-Content -Path $localKeyFile -Raw).Trim()
+$localEnvFile = Join-Path $localSecretDir "netfix.env"
+Set-Content -Path $localEnvFile -Value "NETFIX_MASTER_KEY=$masterKeyHex" -Encoding Ascii
 
 Write-Host "==> Starting netfix-hub container on 0.0.0.0:$Port..." -ForegroundColor Cyan
 podman run -d `
     --name netfix-hub `
     --restart unless-stopped `
     -p "0.0.0.0:${Port}:3000" `
+    --env-file "$localEnvFile" `
     -e "NETFIX_HOSTNAME=$env:COMPUTERNAME" `
     -e "NETFIX_HOST_IP=$hostIp" `
     -e "NETFIX_HOST_ARP=$arpRaw" `
