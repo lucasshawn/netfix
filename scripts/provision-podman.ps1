@@ -80,9 +80,13 @@ podman run -d `
     localhost/netfix:latest
 if ($LASTEXITCODE -ne 0) { throw "Failed to start netfix-hub container" }
 
-# Configure Windows Firewall rules for LAN Phone & PC access (HTTP 80/3000 + mDNS UDP 5353)
+# Configure Windows Firewall rules & LAN mDNS hygiene for Phone & PC access (HTTP 80/3000 + mDNS UDP 5353 + LLMNR UDP 5355)
 $prevErrorAction = $ErrorActionPreference
 $ErrorActionPreference = "SilentlyContinue"
+Set-NetConnectionProfile -InterfaceAlias "Wi-Fi" -NetworkCategory Private | Out-Null
+Get-NetAdapter | Where-Object { $_.Name -like "*vEthernet*" -or $_.Name -like "*WSL*" } | ForEach-Object {
+    Set-DnsClient -InterfaceIndex $_.ifIndex -RegisterThisConnectionsAddress $false | Out-Null
+}
 Remove-NetFirewallRule -DisplayName "Netfix LAN HTTP (80, 3000)" | Out-Null
 Remove-NetFirewallRule -DisplayName "Netfix LAN mDNS (UDP 5353)" | Out-Null
 New-NetFirewallRule -DisplayName "Netfix LAN HTTP (80, 3000)" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 80, $Port, 3001 -Profile Any | Out-Null
@@ -98,15 +102,14 @@ if (Test-Path $hostsFile) {
 }
 $ErrorActionPreference = $prevErrorAction
 
-# Start user-space LAN TCP forwarder (ports 80 & 3000) + mDNS responder (netfix.local / hub.local)
+# Start user-space LAN TCP forwarder (ports 80 & 3000) + mDNS/LLMNR responder (netfix.local / hub.local)
 Get-CimInstance Win32_Process | Where-Object { $_.Name -eq "node.exe" -and $_.CommandLine -like "*lan-proxy.mjs*" } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
-$bindList = ($lanIps -join ",")
+Start-Sleep -Seconds 2
 $proxyScript = Join-Path $PSScriptRoot "lan-proxy.mjs"
-$env:NETFIX_PORT = "$Port"
-$env:NETFIX_BIND_IPS = $bindList
 $null = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
-    CommandLine = "cmd.exe /c set NETFIX_PORT=$Port&& set NETFIX_BIND_IPS=$bindList&& node `"$proxyScript`""
+    CommandLine = "node.exe `"$proxyScript`""
 }
+Start-Sleep -Seconds 2
 
 Write-Host "`n[OK] Netfix is live in Podman on Hub!" -ForegroundColor Green
 Write-Host "   - Named LAN URL (Phone & PC): http://netfix.local  (or http://netfix.local:$Port)"
