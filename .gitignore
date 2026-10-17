@@ -20,3 +20,5 @@ data/
 
 # Brainstorming visual companion session files
 .superpowers/
+.worktrees/
+
