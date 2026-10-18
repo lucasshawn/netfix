@@ -396,7 +396,7 @@ export function TopologyMap({
                       <span>
                         {isMeshBranch
                           ? 'Branch A • 5 GHz Wi-Fi Mesh'
-                          : 'Branch B • SonosNet & Wired LAN'}
+                          : 'Branch B • SonosNet (2412 MHz)'}
                       </span>
                     </span>
                     <button
@@ -418,7 +418,7 @@ export function TopologyMap({
                     node={branchNode}
                     isSelected={selectedNodeId === branchNode.id}
                     onSelect={() => onSelectNode(branchNode.id)}
-                    badgeText={isMeshBranch ? 'L4 MESH AP' : 'L4 SWITCH / BOOST'}
+                    badgeText={isMeshBranch ? 'L4 MESH AP' : 'L4 SONOS BOOST'}
                     compact
                   />
 
@@ -458,7 +458,7 @@ export function TopologyMap({
                                 isSelected={selectedNodeId === client.id}
                                 onSelect={() => onSelectNode(client.id)}
                                 badgeText={
-                                  isMeshBranch ? 'Wi-Fi Client' : 'SonosNet/LAN'
+                                  isMeshBranch ? 'Wi-Fi Client' : 'SonosNet'
                                 }
                                 compact
                               />
