@@ -8,9 +8,16 @@ import { promisify } from 'util';
 const execAsync = promisify(exec);
 const upstreamPort = Number(process.env.NETFIX_PORT || 3000);
 const telemetryPort = Number(process.env.NETFIX_TELEMETRY_PORT || 3001);
-const interfaces = os.networkInterfaces();
+
+process.on('uncaughtException', (err) => {
+  console.error('[lan-proxy] Uncaught exception (recovered):', err?.message || err);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[lan-proxy] Unhandled rejection (recovered):', reason);
+});
 
 function getPrimaryLanIpv4() {
+  const interfaces = os.networkInterfaces();
   for (const name of Object.keys(interfaces)) {
     for (const iface of interfaces[name] || []) {
       if (

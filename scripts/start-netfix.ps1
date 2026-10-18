@@ -10,7 +10,7 @@ if (-not (Test-Path $logDir)) {
     New-Item -ItemType Directory -Path $logDir -Force | Out-Null
 }
 $logFile = Join-Path $logDir "startup.log"
-"=== Netfix Auto-Start $(Get-Date -Format o) ===" | Out-File -FilePath $logFile -Encoding utf8
+"=== Netfix Auto-Start / Self-Heal $(Get-Date -Format o) ===" | Out-File -FilePath $logFile -Encoding utf8
 
 # 1. Wait up to 30s for LAN IPv4 address to come online after reboot
 $hostIp = "192.168.68.73"
@@ -40,7 +40,7 @@ if ($machineList -and $machineList[0].Running -ne $true) {
     }
 }
 
-# 3. Ensure netfix-hub container is running (or create it if missing)
+# 3. Ensure netfix-hub container is running AND responsive on 127.0.0.1:3000
 $containerRunning = podman inspect -f "{{.State.Running}}" netfix-hub 2>$null
 if ($containerRunning -ne "true") {
     $containerExists = podman container exists netfix-hub 2>$null
@@ -63,7 +63,7 @@ if ($containerRunning -ne "true") {
 
         podman run -d `
             --name netfix-hub `
-            --restart unless-stopped `
+            --restart=always `
             -p "0.0.0.0:${Port}:3000" `
             --env-file "$localEnvFile" `
             -e "NETFIX_HOSTNAME=$env:COMPUTERNAME" `
@@ -76,16 +76,64 @@ if ($containerRunning -ne "true") {
     }
 }
 
-# 4. Ensure lan-proxy.mjs (ports 80, 3000, 3001 + mDNS 5353 + LLMNR 5355) is running
+# Wait up to 15s for 127.0.0.1:3000 to respond; if still unresponsive, restart netfix-hub
+$containerHealthy = $false
+for ($h = 0; $h -lt 8; $h++) {
+    try {
+        $resp = Invoke-WebRequest -Uri "http://127.0.0.1:${Port}/api/snapshot" -UseBasicParsing -TimeoutSec 3 -ErrorAction Stop
+        if ($resp.StatusCode -eq 200) {
+            $containerHealthy = $true
+            break
+        }
+    } catch {
+        Start-Sleep -Seconds 2
+    }
+}
+if (-not $containerHealthy) {
+    "Container 127.0.0.1:${Port} did not respond; restarting netfix-hub..." | Out-File -FilePath $logFile -Append -Encoding utf8
+    podman restart netfix-hub | Out-File -FilePath $logFile -Append -Encoding utf8
+    Start-Sleep -Seconds 4
+}
+
+# 4. Ensure lan-proxy.mjs (ports 80, 3000, 3001 + mDNS 5353 + LLMNR 5355) is running and healthy
+$proxyHealthy = $false
+try {
+    $lanResp = Invoke-WebRequest -Uri "http://${hostIp}:80/api/snapshot" -UseBasicParsing -TimeoutSec 3 -ErrorAction Stop
+    if ($lanResp.StatusCode -eq 200) {
+        $proxyHealthy = $true
+    }
+} catch {
+    $proxyHealthy = $false
+}
+
 $existingProxy = Get-CimInstance Win32_Process | Where-Object {
     $_.Name -eq "node.exe" -and $_.CommandLine -like "*lan-proxy.mjs*"
 }
-if (-not $existingProxy) {
-    "Starting lan-proxy.mjs..." | Out-File -FilePath $logFile -Append -Encoding utf8
+
+if (-not $existingProxy -or -not $proxyHealthy) {
+    if ($existingProxy) {
+        "Restarting unresponsive lan-proxy.mjs..." | Out-File -FilePath $logFile -Append -Encoding utf8
+        $existingProxy | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+        Start-Sleep -Seconds 1
+    } else {
+        "Starting lan-proxy.mjs..." | Out-File -FilePath $logFile -Append -Encoding utf8
+    }
     $proxyScript = Join-Path $PSScriptRoot "lan-proxy.mjs"
     $null = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
         CommandLine = "`"C:\Program Files\nodejs\node.exe`" `"$proxyScript`""
     }
 }
 
-"=== Netfix Auto-Start Complete ===" | Out-File -FilePath $logFile -Append -Encoding utf8
+# 5. Ensure watchdog-netfix.mjs (continuous 15s self-healing supervisor) is running
+$existingWatchdog = Get-CimInstance Win32_Process | Where-Object {
+    $_.Name -eq "node.exe" -and $_.CommandLine -like "*watchdog-netfix.mjs*"
+}
+if (-not $existingWatchdog) {
+    "Starting watchdog-netfix.mjs supervisor..." | Out-File -FilePath $logFile -Append -Encoding utf8
+    $watchdogScript = Join-Path $PSScriptRoot "watchdog-netfix.mjs"
+    $null = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
+        CommandLine = "`"C:\Program Files\nodejs\node.exe`" `"$watchdogScript`""
+    }
+}
+
+"=== Netfix Auto-Start / Self-Heal Complete ===" | Out-File -FilePath $logFile -Append -Encoding utf8

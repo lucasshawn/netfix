@@ -68,7 +68,7 @@ Set-Content -Path $localEnvFile -Value "NETFIX_MASTER_KEY=$masterKeyHex" -Encodi
 Write-Host "==> Starting netfix-hub container on 0.0.0.0:$Port..." -ForegroundColor Cyan
 podman run -d `
     --name netfix-hub `
-    --restart unless-stopped `
+    --restart=always `
     -p "0.0.0.0:${Port}:3000" `
     --env-file "$localEnvFile" `
     -e "NETFIX_HOSTNAME=$env:COMPUTERNAME" `
@@ -107,11 +107,19 @@ Get-CimInstance Win32_Process | Where-Object { $_.Name -eq "node.exe" -and $_.Co
 Start-Sleep -Seconds 2
 $proxyScript = Join-Path $PSScriptRoot "lan-proxy.mjs"
 $null = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
-    CommandLine = "node.exe `"$proxyScript`""
+    CommandLine = "`"C:\Program Files\nodejs\node.exe`" `"$proxyScript`""
+}
+
+# Start continuous 15-second self-healing watchdog (watchdog-netfix.mjs)
+Get-CimInstance Win32_Process | Where-Object { $_.Name -eq "node.exe" -and $_.CommandLine -like "*watchdog-netfix.mjs*" } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+Start-Sleep -Seconds 1
+$watchdogScript = Join-Path $PSScriptRoot "watchdog-netfix.mjs"
+$null = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
+    CommandLine = "`"C:\Program Files\nodejs\node.exe`" `"$watchdogScript`""
 }
 Start-Sleep -Seconds 2
 
-# Register automatic startup on PC reboot / logon (Scheduled Task + Registry Run)
+# Register automatic startup & periodic watchdog on PC reboot / logon (Scheduled Task + Startup VBS + Registry Run)
 $startScript = Join-Path $PSScriptRoot "start-netfix.ps1"
 $prevErrorAction = $ErrorActionPreference
 $ErrorActionPreference = "SilentlyContinue"
@@ -120,7 +128,20 @@ $triggerLogon = New-ScheduledTaskTrigger -AtLogOn
 $triggerBoot = New-ScheduledTaskTrigger -AtStartup
 $taskSettings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Hours 0)
 Register-ScheduledTask -TaskName "Netfix-AutoStart" -Action $taskAction -Trigger @($triggerLogon, $triggerBoot) -Settings $taskSettings -RunLevel Highest -Force | Out-Null
+schtasks.exe /Create /TN "Netfix-Watchdog" /TR "powershell.exe -WindowStyle Hidden -NoProfile -ExecutionPolicy Bypass -File `"$startScript`"" /SC MINUTE /MO 5 /F | Out-Null
 Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "NetfixAutoStart" -Value "powershell.exe -WindowStyle Hidden -NoProfile -ExecutionPolicy Bypass -File `"$startScript`"" -Force | Out-Null
+
+$startupFolder = [Environment]::GetFolderPath('Startup')
+if ($startupFolder -and (Test-Path $startupFolder)) {
+    $vbsPath = Join-Path $startupFolder "netfix-watchdog.vbs"
+    $vbsLines = @(
+        "' Netfix Always-Up Startup & Watchdog Launcher",
+        "Set WshShell = CreateObject(""WScript.Shell"")",
+        "WshShell.Run ""powershell.exe -WindowStyle Hidden -NoProfile -ExecutionPolicy Bypass -File """"$startScript"""""", 0, False",
+        "Set WshShell = Nothing"
+    )
+    Set-Content -Path $vbsPath -Value ($vbsLines -join "`r`n") -Encoding Ascii
+}
 $ErrorActionPreference = $prevErrorAction
 
 Write-Host "`n[OK] Netfix is live in Podman on Hub!" -ForegroundColor Green
@@ -129,6 +150,7 @@ Write-Host "   - Host mDNS URL (Phone & PC): http://$($env:COMPUTERNAME.ToLower(
 foreach ($ip in $lanIps) {
     Write-Host "   - Direct LAN IP URL:          http://${ip}:$Port"
 }
-Write-Host "   - Auto-Start on PC Reboot:    Enabled (Scheduled Task 'Netfix-AutoStart' + User Startup Run Key)"
+Write-Host "   - Always-Up Supervision:      Active (15s Node Watchdog + 5m Task Scheduler + Startup VBS + Run Key)"
 Write-Host "   - Gateway Auto-Discovery:     Active via Traceroute + UPnP IGD (192.168.68.1 Main Deco Unit)"
+
 
